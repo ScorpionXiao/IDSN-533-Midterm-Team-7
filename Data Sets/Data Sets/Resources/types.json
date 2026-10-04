@@ -1,0 +1,953 @@
+{
+ "summary": {
+  "n_dates": 8378,
+  "n_participants": 549,
+  "n_with_revealed": 452,
+  "match_rate": 0.165,
+  "attrs": [
+   "attractive",
+   "sincere",
+   "intelligent",
+   "funny",
+   "ambitious",
+   "shared_interests"
+  ],
+  "interests": [
+   "sports",
+   "tvsports",
+   "exercise",
+   "dining",
+   "museums",
+   "art",
+   "hiking",
+   "gaming",
+   "clubbing",
+   "reading",
+   "tv",
+   "theater",
+   "movies",
+   "concerts",
+   "music",
+   "shopping",
+   "yoga"
+  ],
+  "overall": {
+   "stated": {
+    "attractive": 22.2,
+    "sincere": 17.5,
+    "intelligent": 20.3,
+    "funny": 17.5,
+    "ambitious": 10.9,
+    "shared_interests": 11.7
+   },
+   "revealed": {
+    "attractive": 26.0,
+    "sincere": 11.0,
+    "intelligent": 11.9,
+    "funny": 20.9,
+    "ambitious": 10.6,
+    "shared_interests": 19.5
+   }
+  },
+  "by_gender": {
+   "female": {
+    "stated": {
+     "attractive": 17.5,
+     "sincere": 18.3,
+     "intelligent": 21.0,
+     "funny": 17.5,
+     "ambitious": 12.9,
+     "shared_interests": 12.7
+    },
+    "revealed": {
+     "attractive": 24.0,
+     "sincere": 11.4,
+     "intelligent": 13.0,
+     "funny": 20.4,
+     "ambitious": 10.2,
+     "shared_interests": 20.9
+    }
+   },
+   "male": {
+    "stated": {
+     "attractive": 26.8,
+     "sincere": 16.8,
+     "intelligent": 19.6,
+     "funny": 17.5,
+     "ambitious": 8.9,
+     "shared_interests": 10.7
+    },
+    "revealed": {
+     "attractive": 28.1,
+     "sincere": 10.6,
+     "intelligent": 10.8,
+     "funny": 21.4,
+     "ambitious": 10.9,
+     "shared_interests": 18.2
+    }
+   }
+  }
+ },
+ "types": [
+  {
+   "id": "attractive+sincere",
+   "name": "Attractive & Sincere",
+   "top_attrs": [
+    "attractive",
+    "sincere"
+   ],
+   "count": 22,
+   "share": 0.049,
+   "revealed": {
+    "attractive": 34.5,
+    "sincere": 23.7,
+    "intelligent": 11.6,
+    "funny": 12.4,
+    "ambitious": 8.3,
+    "shared_interests": 9.5
+   },
+   "stated": {
+    "attractive": 28.3,
+    "sincere": 16.6,
+    "intelligent": 18.9,
+    "funny": 16.8,
+    "ambitious": 10.6,
+    "shared_interests": 8.8
+   },
+   "gender": {
+    "male": 0.5,
+    "female": 0.5
+   },
+   "age_mean": 25.8,
+   "field": {
+    "Law": 0.273,
+    "Social Science": 0.227,
+    "Business": 0.136,
+    "STEM": 0.136,
+    "Other": 0.091,
+    "Arts & Humanities": 0.091,
+    "Education": 0.045
+   },
+   "interests": {
+    "sports": 6.0,
+    "tvsports": 4.7,
+    "exercise": 6.3,
+    "dining": 8.0,
+    "museums": 7.7,
+    "art": 7.5,
+    "hiking": 5.5,
+    "gaming": 4.2,
+    "clubbing": 5.8,
+    "reading": 7.4,
+    "tv": 6.6,
+    "theater": 7.2,
+    "movies": 8.1,
+    "concerts": 7.5,
+    "music": 8.3,
+    "shopping": 7.0,
+    "yoga": 4.6
+   }
+  },
+  {
+   "id": "attractive+intelligent",
+   "name": "Attractive & Intelligent",
+   "top_attrs": [
+    "attractive",
+    "intelligent"
+   ],
+   "count": 29,
+   "share": 0.064,
+   "revealed": {
+    "attractive": 29.1,
+    "sincere": 10.5,
+    "intelligent": 27.6,
+    "funny": 13.2,
+    "ambitious": 7.9,
+    "shared_interests": 11.7
+   },
+   "stated": {
+    "attractive": 21.0,
+    "sincere": 15.5,
+    "intelligent": 22.7,
+    "funny": 18.3,
+    "ambitious": 10.1,
+    "shared_interests": 12.4
+   },
+   "gender": {
+    "male": 0.517,
+    "female": 0.483
+   },
+   "age_mean": 25.0,
+   "field": {
+    "STEM": 0.31,
+    "Business": 0.276,
+    "Social Science": 0.207,
+    "Law": 0.103,
+    "Arts & Humanities": 0.103
+   },
+   "interests": {
+    "sports": 7.0,
+    "tvsports": 4.6,
+    "exercise": 5.9,
+    "dining": 7.3,
+    "museums": 6.9,
+    "art": 7.1,
+    "hiking": 5.4,
+    "gaming": 3.9,
+    "clubbing": 5.8,
+    "reading": 8.2,
+    "tv": 5.2,
+    "theater": 6.6,
+    "movies": 7.9,
+    "concerts": 6.5,
+    "music": 7.8,
+    "shopping": 4.9,
+    "yoga": 3.7
+   }
+  },
+  {
+   "id": "attractive+funny",
+   "name": "Attractive & Funny",
+   "top_attrs": [
+    "attractive",
+    "funny"
+   ],
+   "count": 122,
+   "share": 0.27,
+   "revealed": {
+    "attractive": 32.9,
+    "sincere": 8.3,
+    "intelligent": 8.8,
+    "funny": 28.0,
+    "ambitious": 8.5,
+    "shared_interests": 13.6
+   },
+   "stated": {
+    "attractive": 23.6,
+    "sincere": 17.7,
+    "intelligent": 19.8,
+    "funny": 17.2,
+    "ambitious": 10.7,
+    "shared_interests": 11.1
+   },
+   "gender": {
+    "male": 0.598,
+    "female": 0.402
+   },
+   "age_mean": 26.7,
+   "field": {
+    "Business": 0.311,
+    "STEM": 0.287,
+    "Social Science": 0.172,
+    "Arts & Humanities": 0.074,
+    "Law": 0.066,
+    "Other": 0.049,
+    "Education": 0.041
+   },
+   "interests": {
+    "sports": 6.9,
+    "tvsports": 4.8,
+    "exercise": 6.5,
+    "dining": 7.9,
+    "museums": 6.8,
+    "art": 6.5,
+    "hiking": 5.7,
+    "gaming": 3.7,
+    "clubbing": 5.7,
+    "reading": 7.5,
+    "tv": 5.1,
+    "theater": 6.5,
+    "movies": 7.9,
+    "concerts": 6.8,
+    "music": 7.8,
+    "shopping": 5.4,
+    "yoga": 4.4
+   }
+  },
+  {
+   "id": "attractive+ambitious",
+   "name": "Attractive & Ambitious",
+   "top_attrs": [
+    "attractive",
+    "ambitious"
+   ],
+   "count": 29,
+   "share": 0.064,
+   "revealed": {
+    "attractive": 30.5,
+    "sincere": 9.1,
+    "intelligent": 11.2,
+    "funny": 12.9,
+    "ambitious": 23.9,
+    "shared_interests": 12.4
+   },
+   "stated": {
+    "attractive": 24.8,
+    "sincere": 16.7,
+    "intelligent": 18.4,
+    "funny": 17.6,
+    "ambitious": 11.1,
+    "shared_interests": 11.4
+   },
+   "gender": {
+    "male": 0.586,
+    "female": 0.414
+   },
+   "age_mean": 25.7,
+   "field": {
+    "Business": 0.345,
+    "STEM": 0.276,
+    "Social Science": 0.172,
+    "Other": 0.138,
+    "Law": 0.034,
+    "Arts & Humanities": 0.034
+   },
+   "interests": {
+    "sports": 6.6,
+    "tvsports": 5.3,
+    "exercise": 7.2,
+    "dining": 7.7,
+    "museums": 6.8,
+    "art": 5.8,
+    "hiking": 5.0,
+    "gaming": 3.5,
+    "clubbing": 6.4,
+    "reading": 7.8,
+    "tv": 5.8,
+    "theater": 6.6,
+    "movies": 7.7,
+    "concerts": 6.3,
+    "music": 7.6,
+    "shopping": 5.9,
+    "yoga": 3.9
+   }
+  },
+  {
+   "id": "attractive+shared_interests",
+   "name": "Attractive & Shared interests",
+   "top_attrs": [
+    "attractive",
+    "shared_interests"
+   ],
+   "count": 98,
+   "share": 0.217,
+   "revealed": {
+    "attractive": 29.8,
+    "sincere": 8.4,
+    "intelligent": 8.0,
+    "funny": 17.4,
+    "ambitious": 8.5,
+    "shared_interests": 27.9
+   },
+   "stated": {
+    "attractive": 21.8,
+    "sincere": 17.6,
+    "intelligent": 20.3,
+    "funny": 17.9,
+    "ambitious": 11.4,
+    "shared_interests": 11.5
+   },
+   "gender": {
+    "female": 0.551,
+    "male": 0.449
+   },
+   "age_mean": 26.4,
+   "field": {
+    "Social Science": 0.235,
+    "STEM": 0.194,
+    "Business": 0.194,
+    "Other": 0.122,
+    "Arts & Humanities": 0.122,
+    "Law": 0.092,
+    "Education": 0.041
+   },
+   "interests": {
+    "sports": 6.5,
+    "tvsports": 4.3,
+    "exercise": 6.4,
+    "dining": 8.0,
+    "museums": 7.3,
+    "art": 7.1,
+    "hiking": 5.7,
+    "gaming": 3.5,
+    "clubbing": 5.8,
+    "reading": 7.9,
+    "tv": 5.0,
+    "theater": 6.7,
+    "movies": 7.9,
+    "concerts": 6.7,
+    "music": 8.1,
+    "shopping": 5.9,
+    "yoga": 4.3
+   }
+  },
+  {
+   "id": "sincere+intelligent",
+   "name": "Sincere & Intelligent",
+   "top_attrs": [
+    "sincere",
+    "intelligent"
+   ],
+   "count": 10,
+   "share": 0.022,
+   "revealed": {
+    "attractive": 15.3,
+    "sincere": 25.1,
+    "intelligent": 23.4,
+    "funny": 15.7,
+    "ambitious": 10.2,
+    "shared_interests": 10.3
+   },
+   "stated": {
+    "attractive": 17.9,
+    "sincere": 22.4,
+    "intelligent": 19.0,
+    "funny": 16.8,
+    "ambitious": 13.0,
+    "shared_interests": 11.0
+   },
+   "gender": {
+    "female": 0.6,
+    "male": 0.4
+   },
+   "age_mean": 25.3,
+   "field": {
+    "Arts & Humanities": 0.3,
+    "STEM": 0.3,
+    "Education": 0.2,
+    "Social Science": 0.2
+   },
+   "interests": {
+    "sports": 4.8,
+    "tvsports": 4.0,
+    "exercise": 4.8,
+    "dining": 7.9,
+    "museums": 6.7,
+    "art": 6.5,
+    "hiking": 5.4,
+    "gaming": 3.3,
+    "clubbing": 5.3,
+    "reading": 7.1,
+    "tv": 5.2,
+    "theater": 6.2,
+    "movies": 6.6,
+    "concerts": 6.3,
+    "music": 8.1,
+    "shopping": 5.9,
+    "yoga": 4.3
+   }
+  },
+  {
+   "id": "sincere+funny",
+   "name": "Sincere & Funny",
+   "top_attrs": [
+    "sincere",
+    "funny"
+   ],
+   "count": 13,
+   "share": 0.029,
+   "revealed": {
+    "attractive": 18.2,
+    "sincere": 24.7,
+    "intelligent": 12.1,
+    "funny": 25.3,
+    "ambitious": 9.0,
+    "shared_interests": 10.7
+   },
+   "stated": {
+    "attractive": 24.2,
+    "sincere": 18.4,
+    "intelligent": 21.1,
+    "funny": 18.8,
+    "ambitious": 8.0,
+    "shared_interests": 9.6
+   },
+   "gender": {
+    "male": 0.615,
+    "female": 0.385
+   },
+   "age_mean": 28.2,
+   "field": {
+    "STEM": 0.308,
+    "Business": 0.231,
+    "Arts & Humanities": 0.231,
+    "Social Science": 0.154,
+    "Education": 0.077
+   },
+   "interests": {
+    "sports": 6.2,
+    "tvsports": 3.5,
+    "exercise": 5.3,
+    "dining": 7.5,
+    "museums": 7.2,
+    "art": 6.8,
+    "hiking": 5.9,
+    "gaming": 4.2,
+    "clubbing": 4.7,
+    "reading": 8.1,
+    "tv": 5.5,
+    "theater": 6.5,
+    "movies": 7.8,
+    "concerts": 7.4,
+    "music": 7.8,
+    "shopping": 5.6,
+    "yoga": 4.8
+   }
+  },
+  {
+   "id": "sincere+ambitious",
+   "name": "Sincere & Ambitious",
+   "top_attrs": [
+    "sincere",
+    "ambitious"
+   ],
+   "count": 2,
+   "share": 0.004,
+   "revealed": {
+    "attractive": 12.9,
+    "sincere": 25.4,
+    "intelligent": 17.5,
+    "funny": 12.1,
+    "ambitious": 28.9,
+    "shared_interests": 3.2
+   },
+   "stated": {
+    "attractive": 22.5,
+    "sincere": 17.5,
+    "intelligent": 15.0,
+    "funny": 22.5,
+    "ambitious": 7.5,
+    "shared_interests": 15.0
+   },
+   "gender": {
+    "male": 1.0
+   },
+   "age_mean": 27.0,
+   "field": {
+    "Law": 0.5,
+    "STEM": 0.5
+   },
+   "interests": {
+    "sports": 5.5,
+    "tvsports": 4.5,
+    "exercise": 6.0,
+    "dining": 6.0,
+    "museums": 6.0,
+    "art": 6.0,
+    "hiking": 6.5,
+    "gaming": 6.0,
+    "clubbing": 4.5,
+    "reading": 7.5,
+    "tv": 4.0,
+    "theater": 5.5,
+    "movies": 5.5,
+    "concerts": 5.0,
+    "music": 5.0,
+    "shopping": 3.5,
+    "yoga": 1.0
+   }
+  },
+  {
+   "id": "sincere+shared_interests",
+   "name": "Sincere & Shared interests",
+   "top_attrs": [
+    "sincere",
+    "shared_interests"
+   ],
+   "count": 13,
+   "share": 0.029,
+   "revealed": {
+    "attractive": 11.3,
+    "sincere": 26.4,
+    "intelligent": 9.0,
+    "funny": 15.2,
+    "ambitious": 5.3,
+    "shared_interests": 32.7
+   },
+   "stated": {
+    "attractive": 19.2,
+    "sincere": 21.1,
+    "intelligent": 21.4,
+    "funny": 15.2,
+    "ambitious": 8.1,
+    "shared_interests": 15.0
+   },
+   "gender": {
+    "female": 0.538,
+    "male": 0.462
+   },
+   "age_mean": 27.8,
+   "field": {
+    "Business": 0.462,
+    "Social Science": 0.308,
+    "STEM": 0.154,
+    "Law": 0.077
+   },
+   "interests": {
+    "sports": 5.7,
+    "tvsports": 4.8,
+    "exercise": 5.1,
+    "dining": 7.8,
+    "museums": 6.6,
+    "art": 6.4,
+    "hiking": 6.8,
+    "gaming": 4.5,
+    "clubbing": 5.2,
+    "reading": 7.8,
+    "tv": 6.1,
+    "theater": 6.7,
+    "movies": 8.2,
+    "concerts": 6.6,
+    "music": 7.3,
+    "shopping": 4.9,
+    "yoga": 3.9
+   }
+  },
+  {
+   "id": "intelligent+funny",
+   "name": "Intelligent & Funny",
+   "top_attrs": [
+    "intelligent",
+    "funny"
+   ],
+   "count": 7,
+   "share": 0.015,
+   "revealed": {
+    "attractive": 14.8,
+    "sincere": 9.2,
+    "intelligent": 24.1,
+    "funny": 28.5,
+    "ambitious": 13.4,
+    "shared_interests": 9.9
+   },
+   "stated": {
+    "attractive": 15.8,
+    "sincere": 17.5,
+    "intelligent": 23.5,
+    "funny": 19.2,
+    "ambitious": 9.2,
+    "shared_interests": 14.9
+   },
+   "gender": {
+    "female": 0.571,
+    "male": 0.429
+   },
+   "age_mean": 25.0,
+   "field": {
+    "Arts & Humanities": 0.286,
+    "Other": 0.286,
+    "Business": 0.286,
+    "Social Science": 0.143
+   },
+   "interests": {
+    "sports": 5.6,
+    "tvsports": 4.0,
+    "exercise": 5.7,
+    "dining": 8.1,
+    "museums": 7.0,
+    "art": 6.7,
+    "hiking": 4.9,
+    "gaming": 3.3,
+    "clubbing": 5.1,
+    "reading": 7.9,
+    "tv": 4.9,
+    "theater": 6.7,
+    "movies": 8.6,
+    "concerts": 7.0,
+    "music": 8.1,
+    "shopping": 4.6,
+    "yoga": 4.6
+   }
+  },
+  {
+   "id": "intelligent+ambitious",
+   "name": "Intelligent & Ambitious",
+   "top_attrs": [
+    "intelligent",
+    "ambitious"
+   ],
+   "count": 4,
+   "share": 0.009,
+   "revealed": {
+    "attractive": 12.4,
+    "sincere": 14.2,
+    "intelligent": 22.9,
+    "funny": 13.2,
+    "ambitious": 20.6,
+    "shared_interests": 16.8
+   },
+   "stated": {
+    "attractive": 19.0,
+    "sincere": 18.8,
+    "intelligent": 19.2,
+    "funny": 18.8,
+    "ambitious": 11.8,
+    "shared_interests": 12.5
+   },
+   "gender": {
+    "male": 0.75,
+    "female": 0.25
+   },
+   "age_mean": 27.5,
+   "field": {
+    "Social Science": 0.25,
+    "Education": 0.25,
+    "Other": 0.25,
+    "STEM": 0.25
+   },
+   "interests": {
+    "sports": 7.0,
+    "tvsports": 5.5,
+    "exercise": 5.5,
+    "dining": 8.8,
+    "museums": 7.5,
+    "art": 7.2,
+    "hiking": 5.2,
+    "gaming": 6.0,
+    "clubbing": 6.0,
+    "reading": 8.5,
+    "tv": 6.0,
+    "theater": 6.5,
+    "movies": 8.8,
+    "concerts": 7.2,
+    "music": 8.2,
+    "shopping": 5.0,
+    "yoga": 3.2
+   }
+  },
+  {
+   "id": "intelligent+shared_interests",
+   "name": "Intelligent & Shared interests",
+   "top_attrs": [
+    "intelligent",
+    "shared_interests"
+   ],
+   "count": 15,
+   "share": 0.033,
+   "revealed": {
+    "attractive": 13.3,
+    "sincere": 11.9,
+    "intelligent": 25.8,
+    "funny": 12.9,
+    "ambitious": 9.7,
+    "shared_interests": 26.4
+   },
+   "stated": {
+    "attractive": 21.2,
+    "sincere": 17.9,
+    "intelligent": 21.3,
+    "funny": 15.0,
+    "ambitious": 12.4,
+    "shared_interests": 12.1
+   },
+   "gender": {
+    "female": 0.6,
+    "male": 0.4
+   },
+   "age_mean": 26.3,
+   "field": {
+    "Other": 0.267,
+    "STEM": 0.2,
+    "Arts & Humanities": 0.2,
+    "Business": 0.133,
+    "Law": 0.067,
+    "Education": 0.067,
+    "Social Science": 0.067
+   },
+   "interests": {
+    "sports": 5.5,
+    "tvsports": 3.9,
+    "exercise": 5.8,
+    "dining": 7.5,
+    "museums": 6.5,
+    "art": 6.3,
+    "hiking": 6.2,
+    "gaming": 4.1,
+    "clubbing": 5.1,
+    "reading": 8.5,
+    "tv": 5.2,
+    "theater": 7.4,
+    "movies": 7.7,
+    "concerts": 6.0,
+    "music": 7.2,
+    "shopping": 4.7,
+    "yoga": 5.3
+   }
+  },
+  {
+   "id": "funny+ambitious",
+   "name": "Funny & Ambitious",
+   "top_attrs": [
+    "funny",
+    "ambitious"
+   ],
+   "count": 13,
+   "share": 0.029,
+   "revealed": {
+    "attractive": 15.0,
+    "sincere": 12.1,
+    "intelligent": 13.3,
+    "funny": 24.1,
+    "ambitious": 21.9,
+    "shared_interests": 13.7
+   },
+   "stated": {
+    "attractive": 16.5,
+    "sincere": 19.0,
+    "intelligent": 23.2,
+    "funny": 16.5,
+    "ambitious": 11.8,
+    "shared_interests": 13.1
+   },
+   "gender": {
+    "female": 0.692,
+    "male": 0.308
+   },
+   "age_mean": 26.5,
+   "field": {
+    "Social Science": 0.385,
+    "STEM": 0.308,
+    "Arts & Humanities": 0.154,
+    "Law": 0.077,
+    "Business": 0.077
+   },
+   "interests": {
+    "sports": 7.1,
+    "tvsports": 4.8,
+    "exercise": 7.7,
+    "dining": 8.1,
+    "museums": 6.7,
+    "art": 6.4,
+    "hiking": 6.5,
+    "gaming": 4.1,
+    "clubbing": 6.0,
+    "reading": 7.0,
+    "tv": 5.8,
+    "theater": 7.3,
+    "movies": 8.1,
+    "concerts": 5.9,
+    "music": 7.5,
+    "shopping": 5.2,
+    "yoga": 4.7
+   }
+  },
+  {
+   "id": "funny+shared_interests",
+   "name": "Funny & Shared interests",
+   "top_attrs": [
+    "funny",
+    "shared_interests"
+   ],
+   "count": 65,
+   "share": 0.144,
+   "revealed": {
+    "attractive": 17.0,
+    "sincere": 8.3,
+    "intelligent": 10.3,
+    "funny": 26.1,
+    "ambitious": 9.1,
+    "shared_interests": 29.1
+   },
+   "stated": {
+    "attractive": 20.7,
+    "sincere": 17.0,
+    "intelligent": 20.1,
+    "funny": 17.8,
+    "ambitious": 11.5,
+    "shared_interests": 12.9
+   },
+   "gender": {
+    "female": 0.6,
+    "male": 0.4
+   },
+   "age_mean": 26.3,
+   "field": {
+    "Business": 0.262,
+    "STEM": 0.231,
+    "Social Science": 0.2,
+    "Law": 0.108,
+    "Arts & Humanities": 0.108,
+    "Other": 0.062,
+    "Education": 0.031
+   },
+   "interests": {
+    "sports": 6.0,
+    "tvsports": 4.4,
+    "exercise": 6.0,
+    "dining": 7.9,
+    "museums": 7.5,
+    "art": 7.2,
+    "hiking": 5.9,
+    "gaming": 4.0,
+    "clubbing": 6.0,
+    "reading": 7.6,
+    "tv": 5.4,
+    "theater": 7.4,
+    "movies": 8.1,
+    "concerts": 7.7,
+    "music": 8.1,
+    "shopping": 5.9,
+    "yoga": 4.9
+   }
+  },
+  {
+   "id": "ambitious+shared_interests",
+   "name": "Ambitious & Shared interests",
+   "top_attrs": [
+    "ambitious",
+    "shared_interests"
+   ],
+   "count": 10,
+   "share": 0.022,
+   "revealed": {
+    "attractive": 13.1,
+    "sincere": 10.8,
+    "intelligent": 10.7,
+    "funny": 14.1,
+    "ambitious": 25.6,
+    "shared_interests": 25.8
+   },
+   "stated": {
+    "attractive": 20.8,
+    "sincere": 15.3,
+    "intelligent": 21.1,
+    "funny": 20.1,
+    "ambitious": 10.4,
+    "shared_interests": 12.3
+   },
+   "gender": {
+    "female": 0.5,
+    "male": 0.5
+   },
+   "age_mean": 23.7,
+   "field": {
+    "STEM": 0.3,
+    "Law": 0.2,
+    "Social Science": 0.1,
+    "Business": 0.1,
+    "Education": 0.1,
+    "Other": 0.1,
+    "Arts & Humanities": 0.1
+   },
+   "interests": {
+    "sports": 5.5,
+    "tvsports": 4.9,
+    "exercise": 5.9,
+    "dining": 7.7,
+    "museums": 7.2,
+    "art": 6.8,
+    "hiking": 7.0,
+    "gaming": 5.2,
+    "clubbing": 6.5,
+    "reading": 8.0,
+    "tv": 6.1,
+    "theater": 6.9,
+    "movies": 8.4,
+    "concerts": 7.5,
+    "music": 8.3,
+    "shopping": 6.6,
+    "yoga": 3.2
+   }
+  }
+ ]
+}
