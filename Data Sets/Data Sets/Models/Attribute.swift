@@ -12,7 +12,7 @@ enum Attribute: String, CaseIterable, Identifiable, Hashable {
     var id: String { rawValue }
 
     /// Position in allCases, used for sorting and for building type ids
-    var order: Int { Attribute.allCases.firstIndex(of: self) ?? 0 }
+    nonisolated var order: Int { Attribute.allCases.firstIndex(of: self) ?? 0 }
 
     var label: String {
         switch self {

@@ -48,7 +48,7 @@ enum TypeCalculator {
     }
 
     /// All six attributes sorted by weight, highest first (ties keep Attribute order)
-    static func ranked(_ weights: Weights) -> [Attribute] {
+    nonisolated static func ranked(_ weights: Weights) -> [Attribute] {
         Attribute.allCases.sorted { a, b in
             let wa = weights[a] ?? 0, wb = weights[b] ?? 0
             return wa != wb ? wa > wb : a.order < b.order
@@ -56,7 +56,7 @@ enum TypeCalculator {
     }
 
     /// Type id such as "attractive+funny" (the two attributes joined in Attribute order, matching types.json)
-    static func typeID(for weights: Weights) -> String {
+    nonisolated static func typeID(for weights: Weights) -> String {
         let top = ranked(weights).prefix(2).sorted { $0.order < $1.order }
         return top.map(\.rawValue).joined(separator: "+")
     }

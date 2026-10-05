@@ -4,13 +4,11 @@ import Observation
 @main
 struct FindYourTypeApp: App {
     @State private var store = DataStore()
-    @State private var router = AppRouter()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            VibeMateFlowView()
                 .environment(store)
-                .environment(router)
         }
     }
 }

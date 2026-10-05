@@ -121,7 +121,7 @@ struct Participant: Codable, Identifiable {
     var statedWeights: Weights? { Participant.weights(stated) }
     var revealedWeights: Weights? { revealed.flatMap(Participant.weights) }
 
-    private static func weights(_ dict: [String: Double?]) -> Weights? {
+    private nonisolated static func weights(_ dict: [String: Double?]) -> Weights? {
         var w: Weights = [:]
         for a in Attribute.allCases {
             guard let v = dict[a.rawValue] ?? nil else { return nil }
