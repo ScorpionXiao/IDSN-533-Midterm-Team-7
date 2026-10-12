@@ -24,7 +24,7 @@ struct VibeMateFlowView: View {
                 }
             case .chat:
                 if let match = session.match {
-                    SimulatedChatView(character: match.character)
+                    CompanionChatView(match: match)
                 }
             }
         }
@@ -871,33 +871,53 @@ private struct FullScreenMessageVideoView: View {
     }
 }
 
-// MARK: - Simulated future chat
+// MARK: - Companion chat (live OpenAI API, scripted fallback)
 
 private struct DemoChatMessage: Identifiable, Hashable {
+    enum Kind: Hashable { case user, companion, notice }
+
     let id = UUID()
-    let text: String
-    let isUser: Bool
+    var text: String
+    let kind: Kind
+
+    var isUser: Bool { kind == .user }
 }
 
-private struct SimulatedChatView: View {
+private struct CompanionChatView: View {
     @Environment(DemoSession.self) private var session
-    let character: VirtualCharacter
+    @Environment(DataStore.self) private var store
+    let match: CompanionMatch
     @State private var messages: [DemoChatMessage]
     @State private var draft = ""
     @State private var isTyping = false
     @State private var usedQuickReply = false
+    @State private var replyTask: Task<Void, Never>?
+    private let chatService: CompanionChatService?
 
-    init(character: VirtualCharacter) {
-        self.character = character
-        _messages = State(initialValue: [
-            DemoChatMessage(text: character.greeting, isUser: false)
-        ])
+    private var character: VirtualCharacter { match.character }
+
+    init(match: CompanionMatch) {
+        self.match = match
+        let service = ChatAPIConfig.load().map { CompanionChatService(config: $0) }
+        self.chatService = service
+        var initial = [DemoChatMessage(text: match.character.greeting, kind: .companion)]
+        if service == nil {
+            initial.insert(
+                DemoChatMessage(
+                    text: "Offline demo mode: add your API key to APIConfig.plist to chat live.",
+                    kind: .notice
+                ),
+                at: 0
+            )
+        }
+        _messages = State(initialValue: initial)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Button {
+                    replyTask?.cancel()
                     session.step = .discovery
                 } label: {
                     Image(systemName: "chevron.left")
@@ -948,7 +968,7 @@ private struct SimulatedChatView: View {
                                 .id(message.id)
                         }
 
-                        if isTyping {
+                        if isTyping && messages.last?.kind != .companion {
                             HStack {
                                 TypingBubble()
                                 Spacer(minLength: 100)
@@ -958,11 +978,10 @@ private struct SimulatedChatView: View {
                     }
                     .padding(16)
                 }
-                .onChange(of: messages.count) {
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: messages.last?.text) {
                     if let last = messages.last {
-                        withAnimation {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
+                        proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
             }
@@ -996,7 +1015,7 @@ private struct SimulatedChatView: View {
 
                 Button {
                     let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !message.isEmpty else { return }
+                    guard !message.isEmpty, !isTyping else { return }
                     draft = ""
                     usedQuickReply = true
                     send(message)
@@ -1013,30 +1032,79 @@ private struct SimulatedChatView: View {
                             ),
                             in: Circle()
                         )
+                        .opacity(isTyping ? 0.45 : 1)
                 }
                 .buttonStyle(.plain)
+                .disabled(isTyping)
             }
             .padding(.horizontal, 14)
             .padding(.top, 8)
             .padding(.bottom, 10)
             .background(.black.opacity(0.18))
         }
+        .onDisappear {
+            replyTask?.cancel()
+        }
     }
 
     private func send(_ text: String) {
         withAnimation {
-            messages.append(DemoChatMessage(text: text, isUser: true))
+            messages.append(DemoChatMessage(text: text, kind: .user))
             isTyping = true
         }
 
-        Task {
-            try? await Task.sleep(for: .milliseconds(720))
-            let reply = character.replies[text]
-                ?? "I like where this is going. In the full version, this is where our live conversation begins."
-            withAnimation {
-                isTyping = false
-                messages.append(DemoChatMessage(text: reply, isUser: false))
+        if let chatService {
+            replyTask = Task { await streamLiveReply(using: chatService) }
+        } else {
+            replyTask = Task { await scriptedReply(to: text) }
+        }
+    }
+
+    /// Sends the whole conversation to the model and grows one bubble as text streams in.
+    private func streamLiveReply(using service: CompanionChatService) async {
+        var turns = [ChatTurn(role: .user, text: CompanionPrompt.openingTurn)]
+        for message in messages {
+            switch message.kind {
+            case .user: turns.append(ChatTurn(role: .user, text: message.text))
+            case .companion: turns.append(ChatTurn(role: .assistant, text: message.text))
+            case .notice: break
             }
+        }
+        let system = CompanionPrompt.system(for: match, summary: store.summary)
+
+        var bubbleIndex: Int?
+        do {
+            for try await chunk in service.streamReply(system: system, turns: turns) {
+                if let index = bubbleIndex {
+                    messages[index].text += chunk
+                } else {
+                    withAnimation {
+                        messages.append(DemoChatMessage(text: chunk, kind: .companion))
+                    }
+                    bubbleIndex = messages.count - 1
+                }
+            }
+        } catch is CancellationError {
+            // The user left the chat; nothing to show.
+        } catch {
+            withAnimation {
+                messages.append(DemoChatMessage(
+                    text: "Couldn't reach \(character.name): \(error.localizedDescription)",
+                    kind: .notice
+                ))
+            }
+        }
+        withAnimation { isTyping = false }
+    }
+
+    /// Offline fallback that keeps the classroom demo working without a key.
+    private func scriptedReply(to text: String) async {
+        try? await Task.sleep(for: .milliseconds(720))
+        let reply = character.replies[text]
+            ?? "I like where this is going. Add an API key and I can really talk with you."
+        withAnimation {
+            isTyping = false
+            messages.append(DemoChatMessage(text: reply, kind: .companion))
         }
     }
 }
@@ -1045,6 +1113,21 @@ private struct ChatBubble: View {
     let message: DemoChatMessage
 
     var body: some View {
+        if message.kind == .notice {
+            Text(message.text)
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.55))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.white.opacity(0.05), in: Capsule())
+                .frame(maxWidth: .infinity)
+        } else {
+            bubble
+        }
+    }
+
+    private var bubble: some View {
         HStack {
             if message.isUser { Spacer(minLength: 64) }
 

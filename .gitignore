@@ -1,0 +1,5 @@
+# Personal Claude API key, never commit
+APIConfig.plist
+
+# Xcode user state
+xcuserdata/

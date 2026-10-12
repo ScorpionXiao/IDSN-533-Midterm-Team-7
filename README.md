@@ -1,6 +1,6 @@
 # VibeMate — IDSN-533 Midterm Team 7
 
-VibeMate is an iOS concept demo for matching a user with a virtual companion. It uses the repository's speed-dating dataset to turn a few lightweight preference signals into a curated set of AI character cards, then demonstrates the intended future experience through a prerecorded personalized video and a simulated chat.
+VibeMate is an iOS concept demo for matching a user with a virtual companion. It uses the repository's speed-dating dataset to turn a few lightweight preference signals into a curated set of AI character cards, then demonstrates the intended future experience through a prerecorded personalized video and a live AI chat powered by the OpenAI API.
 
 This is a course demo, not a production dating service. Its purpose is to communicate the product journey and show how a data-informed recommendation can feel playful, visual, and emotionally engaging without making the user complete a long questionnaire.
 
@@ -17,7 +17,7 @@ The current app is **VibeMate**. The intended experience is:
    - Men: Kai → Malik → Adrian → **Riven**
 6. Liking Victoria or Riven triggers a match animation and opens a full-screen prerecorded message.
 7. When the video finishes, the app automatically enters a simulated chat. A small skip button can enter chat immediately.
-8. The chat supports quick replies and custom text, followed by local scripted responses.
+8. The chat supports quick replies and custom text. With an API key, Victoria or Riven reply live through the OpenAI API, grounded in the user's computed type and the dataset. Without a key, the chat falls back to local scripted responses.
 
 The interaction is deliberately short: one companion preference, two playful signals, one matching moment, and then the content experience.
 
@@ -58,8 +58,8 @@ When an AI assistant reads or modifies this repository, it should treat the curr
 - Treat the original JSON files and data models as supporting infrastructure for VibeMate, not as requirements to rebuild the old interface.
 - Keep Victoria as the fourth featured women’s card and Riven as the fourth featured men’s card unless explicitly asked to change them.
 - The first three cards are discovery simulations; they do not currently have individual videos or chat scripts.
-- Keep the project offline and self-contained unless a backend or external AI service is explicitly requested.
-- Do not describe the prerecorded video or scripted chat as live generation. They intentionally simulate future product capabilities.
+- Keep the project self-contained. The only network call is the companion chat to the OpenAI API (Models/CompanionChatService.swift); never hardcode an API key in source.
+- Do not describe the prerecorded video as live generation. The chat is live only when an API key is configured; otherwise it is scripted.
 - Preserve existing user assets and unrelated team changes when editing the repository.
 
 ## Demo scope and limitations
@@ -75,12 +75,11 @@ Implemented:
 - Bundled full-screen video playback
 - Automatic video-to-chat transition
 - Skip-to-chat control
-- Simulated quick-reply and typed-message chat
+- Live AI chat via the OpenAI API (streaming), with a scripted offline fallback
 
 Simulated or out of scope:
 
 - Real-time generative video
-- Live LLM conversation
 - User accounts, cloud storage, or authentication
 - Production recommendation training or evaluation
 - Safety, moderation, and relationship-policy systems required for a public release
@@ -92,11 +91,21 @@ Simulated or out of scope:
 3. Choose an iPhone simulator, not **My Mac**.
 4. Press **Run** (⌘R).
 
-The app appears as **VibeMate**. It requires iOS 17 or later and does not need a server, API key, or internet connection.
+The app appears as **VibeMate**. It requires iOS 17 or later. Everything except the live chat runs offline.
+
+## Set up the live chat (each teammate, once)
+
+1. Get an API key at https://platform.openai.com/api-keys (the account needs billing credit).
+2. Copy **Data Sets/APIConfig.example.plist** to **Data Sets/Data Sets/APIConfig.plist** (next to FindYourTypeApp.swift).
+3. Replace `PASTE_YOUR_KEY_HERE` with your key. Optionally change `OpenAIModel`.
+4. Build and run. Xcode picks the file up automatically.
+
+**APIConfig.plist** is listed in **.gitignore**, so your key is never committed. Alternatively, set an `OPENAI_API_KEY` environment variable in the scheme (Product → Scheme → Edit Scheme → Run → Arguments). If no key is found, the chat shows "Offline demo mode" and uses the scripted replies. Note that a key bundled in an app can be extracted, which is fine for a class demo but not for a public release.
 
 ## Main files
 
 - **Data Sets/Data Sets/Views/VibeMateDemo.swift** — current end-to-end interface, animations, video, and chat
+- **Data Sets/Data Sets/Models/CompanionChatService.swift** — OpenAI API streaming client, key loading, and the character system prompt
 - **Data Sets/Data Sets/Models/DemoModels.swift** — current matching state, candidate decks, weights, and chat scripts
 - **Data Sets/Data Sets/FindYourTypeApp.swift** — app entry point
 - **Data Sets/Data Sets/Models/DataStore.swift** — local JSON loader
@@ -110,6 +119,6 @@ The app appears as **VibeMate**. It requires iOS 17 or later and does not need a
 - UI: SwiftUI
 - Video: AVKit / AVPlayer
 - Persistence: none
-- Networking: none
+- Networking: URLSession, OpenAI Chat Completions API (chat only)
 - External dependencies: none
 - Bundle identifier: **team7.Data-Sets**
