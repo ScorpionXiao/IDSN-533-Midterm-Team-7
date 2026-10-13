@@ -3,7 +3,7 @@ import Foundation
 /// Reads the OpenAI API settings from APIConfig.plist (gitignored, one copy per teammate).
 /// Falls back to the OPENAI_API_KEY environment variable set in the Xcode scheme.
 struct ChatAPIConfig {
-    static let defaultModel = "gpt-5-mini"
+    static let defaultModel = "gpt-6-luna"
 
     let apiKey: String
     let model: String

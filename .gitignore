@@ -1,5 +1,8 @@
-# Personal Claude API key, never commit
+# Personal OpenAI API key, never commit
 APIConfig.plist
+
+# macOS metadata
+.DS_Store
 
 # Xcode user state
 xcuserdata/
