@@ -18,6 +18,7 @@ The current app is **VibeMate**. The intended experience is:
 6. Liking Victoria or Riven triggers a match animation and opens a full-screen prerecorded message.
 7. When the video finishes, the app automatically enters a simulated chat. A small skip button can enter chat immediately.
 8. The chat supports quick replies and custom text. With an API key, Victoria or Riven reply live through the OpenAI API, grounded in the user's computed type and the dataset. Without a key, the chat falls back to local scripted responses.
+9. For this development version, the sliders button in the chat header opens a temporary **Character content** editor. Teammates can adjust the current character's background, personality, relationship dynamic, speaking style, interests, and boundaries. Saved content is local to the device and is applied to the next API reply.
 
 The interaction is deliberately short: one companion preference, two playful signals, one matching moment, and then the content experience.
 
@@ -59,6 +60,8 @@ When an AI assistant reads or modifies this repository, it should treat the curr
 - Keep Victoria as the fourth featured women’s card and Riven as the fourth featured men’s card unless explicitly asked to change them.
 - The first three cards are discovery simulations; they do not currently have individual videos or chat scripts.
 - Keep the project self-contained. The only network call is the companion chat to the OpenAI API (Models/CompanionChatService.swift); never hardcode an API key in source.
+- Treat each character's structured persona content as authoritative for live chat. Preserve the system-prompt safety and AI-disclosure rules when expanding a persona.
+- `PersonaEditorAccess.isEnabled` controls the temporary direct-editing entrance. Set it to `false` when this internal page should be hidden from end users; do not remove persona loading or persistence.
 - Do not describe the prerecorded video as live generation. The chat is live only when an API key is configured; otherwise it is scripted.
 - Preserve existing user assets and unrelated team changes when editing the repository.
 
@@ -76,6 +79,7 @@ Implemented:
 - Automatic video-to-chat transition
 - Skip-to-chat control
 - Live AI chat via the OpenAI API (streaming), with a scripted offline fallback
+- Per-character persona profiles and a temporary in-app content editor
 
 Simulated or out of scope:
 
@@ -106,11 +110,13 @@ The app appears as **VibeMate**. It requires iOS 17 or later. Everything except 
 
 - **Data Sets/Data Sets/Views/VibeMateDemo.swift** — current end-to-end interface, animations, video, and chat
 - **Data Sets/Data Sets/Models/CompanionChatService.swift** — OpenAI API streaming client, key loading, and the character system prompt
+- **Data Sets/Data Sets/Models/PersonaContent.swift** — persona structure, bundled-default loading, local edits, and the temporary editor access flag
 - **Data Sets/Data Sets/Models/DemoModels.swift** — current matching state, candidate decks, weights, and chat scripts
 - **Data Sets/Data Sets/FindYourTypeApp.swift** — app entry point
 - **Data Sets/Data Sets/Models/DataStore.swift** — local JSON loader
 - **Data Sets/Data Sets/Models/TypeCalculator.swift** — shared preference calculations
 - **Data Sets/Data Sets/Resources/** — JSON datasets and bundled Victoria/Riven videos
+- **Data Sets/Data Sets/Resources/Personas/** — detailed default background, personality, voice, habits, relationship behavior, and boundaries for each featured character
 - **Data Sets/Data Sets/Assets.xcassets/** — candidate, discovery, and character artwork
 
 ## Technical notes

@@ -892,6 +892,8 @@ private struct CompanionChatView: View {
     @State private var isTyping = false
     @State private var usedQuickReply = false
     @State private var replyTask: Task<Void, Never>?
+    @State private var personaContent: PersonaContent
+    @State private var showingPersonaEditor = false
     private let chatService: CompanionChatService?
 
     private var character: VirtualCharacter { match.character }
@@ -911,6 +913,7 @@ private struct CompanionChatView: View {
             )
         }
         _messages = State(initialValue: initial)
+        _personaContent = State(initialValue: PersonaContentStore.load(for: match.character))
     }
 
     var body: some View {
@@ -945,6 +948,19 @@ private struct CompanionChatView: View {
                 }
 
                 Spacer()
+
+                if PersonaEditorAccess.isEnabled {
+                    Button {
+                        showingPersonaEditor = true
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .frame(width: 38, height: 38)
+                            .background(.white.opacity(0.08), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isTyping)
+                    .accessibilityLabel("Edit \(character.name)'s character content")
+                }
 
                 Image(systemName: "video.fill")
                     .foregroundStyle(.white.opacity(0.68))
@@ -1045,6 +1061,18 @@ private struct CompanionChatView: View {
         .onDisappear {
             replyTask?.cancel()
         }
+        .sheet(isPresented: $showingPersonaEditor) {
+            PersonaContentEditorView(character: character, initialContent: personaContent) { updated in
+                personaContent = updated
+                PersonaContentStore.save(updated, for: character)
+                withAnimation {
+                    messages.append(DemoChatMessage(
+                        text: "\(character.name)'s character content was updated. New replies will follow it.",
+                        kind: .notice
+                    ))
+                }
+            }
+        }
     }
 
     private func send(_ text: String) {
@@ -1070,7 +1098,7 @@ private struct CompanionChatView: View {
             case .notice: break
             }
         }
-        let system = CompanionPrompt.system(for: match, summary: store.summary)
+        let system = CompanionPrompt.system(for: match, summary: store.summary, persona: personaContent)
 
         var bubbleIndex: Int?
         do {
@@ -1106,6 +1134,161 @@ private struct CompanionChatView: View {
             isTyping = false
             messages.append(DemoChatMessage(text: reply, kind: .companion))
         }
+    }
+}
+
+// MARK: - Temporary character content editor
+
+private struct PersonaContentEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    let character: VirtualCharacter
+    let onSave: (PersonaContent) -> Void
+    @State private var draft: PersonaContent
+
+    init(
+        character: VirtualCharacter,
+        initialContent: PersonaContent,
+        onSave: @escaping (PersonaContent) -> Void
+    ) {
+        self.character = character
+        self.onSave = onSave
+        _draft = State(initialValue: initialContent)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                VibeBackground()
+
+                ScrollView {
+                    VStack(spacing: 18) {
+                        header
+
+                        PersonaEditorField(
+                            title: "Background",
+                            prompt: "Age, work, history, place, goals, and formative details.",
+                            text: $draft.background
+                        )
+                        PersonaEditorField(
+                            title: "Core personality",
+                            prompt: "Strengths, contradictions, emotional habits, and flaws.",
+                            text: $draft.personality
+                        )
+                        PersonaEditorField(
+                            title: "Relationship dynamic",
+                            prompt: "How this character builds trust, flirts, listens, and responds to vulnerability.",
+                            text: $draft.relationshipDynamic
+                        )
+                        PersonaEditorField(
+                            title: "Speaking style",
+                            prompt: "Message length, tone, humor, questions, emoji, and language behavior.",
+                            text: $draft.speakingStyle
+                        )
+                        PersonaEditorField(
+                            title: "Interests & habits",
+                            prompt: "Specific likes, dislikes, routines, quirks, and memorable details.",
+                            text: $draft.interestsAndHabits
+                        )
+                        PersonaEditorField(
+                            title: "Boundaries",
+                            prompt: "Honesty, safety, relationship boundaries, and behavior the character must avoid.",
+                            text: $draft.boundaries
+                        )
+
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                draft = .bundled(for: character)
+                            }
+                        } label: {
+                            Label("Restore \(character.name)'s default", systemImage: "arrow.counterclockwise")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(18)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .navigationTitle("Character content")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(draft)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(!draft.isComplete)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private var header: some View {
+        HStack(spacing: 14) {
+            Image(character.discoveryImageName)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(.white.opacity(0.18))
+                }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(character.name)
+                    .font(.title2.bold())
+                Text("Temporary demo control")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.vibePink)
+                Text("Saved content shapes every new API reply. It stays on this device.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.58))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+}
+
+private struct PersonaEditorField: View {
+    let title: String
+    let prompt: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title)
+                .font(.headline)
+
+            Text(prompt)
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.48))
+
+            TextEditor(text: $text)
+                .font(.subheadline)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 118)
+                .padding(10)
+                .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .stroke(.white.opacity(0.1))
+                }
+        }
+        .padding(16)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
