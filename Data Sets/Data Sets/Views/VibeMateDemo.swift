@@ -546,11 +546,11 @@ private struct CharacterDiscoveryView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    if currentCandidate.isFeaturedMatch {
+                    if let character = currentCandidate.character {
                         liked = true
                         Task {
                             try? await Task.sleep(for: .milliseconds(650))
-                            session.likeCandidate()
+                            session.likeCandidate(character)
                         }
                     } else {
                         moveToNextCandidate()
@@ -583,7 +583,7 @@ private struct CharacterDiscoveryView: View {
             .padding(.bottom, 4)
 
             Text(
-                currentCandidate.isFeaturedMatch
+                currentCandidate.character != nil
                     ? "Tap the heart to meet \(currentCandidate.name)"
                     : "Swipe to explore · \(selectedIndex + 1) of \(candidates.count)"
             )
@@ -664,9 +664,13 @@ private struct DiscoveryCandidateCard: View {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(spacing: 7) {
                     Circle()
-                        .fill(candidate.isFeaturedMatch ? Color.vibePink : Color.green)
+                        .fill(candidate.character != nil ? Color.vibePink : Color.green)
                         .frame(width: 8, height: 8)
-                    Text(candidate.isFeaturedMatch ? "FEATURED SIGNAL MATCH" : "CURATED FOR YOU")
+                    Text(
+                        candidate.isFeaturedMatch
+                            ? "FEATURED SIGNAL MATCH"
+                            : candidate.character != nil ? "STORY READY" : "CURATED FOR YOU"
+                    )
                         .font(.caption2.weight(.bold))
                         .tracking(1.35)
                 }

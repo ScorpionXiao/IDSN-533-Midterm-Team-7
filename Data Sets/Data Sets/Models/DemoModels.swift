@@ -109,6 +109,25 @@ struct CompanionCandidate: Identifiable, Hashable {
     let headline: String
     let vibe: String
     let isFeaturedMatch: Bool
+    let character: VirtualCharacter?
+
+    init(
+        id: String,
+        name: String,
+        imageName: String,
+        headline: String,
+        vibe: String,
+        isFeaturedMatch: Bool,
+        character: VirtualCharacter? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.imageName = imageName
+        self.headline = headline
+        self.vibe = vibe
+        self.isFeaturedMatch = isFeaturedMatch
+        self.character = character
+    }
 
     static func options(for preference: PreferredCompanion?) -> [CompanionCandidate] {
         if preference == .man {
@@ -143,8 +162,15 @@ struct CompanionCandidate: Identifiable, Hashable {
                     imageName: "DiscoveryRiven",
                     headline: "Magnetic energy with a playful edge",
                     vibe: "Your featured signal match",
-                    isFeaturedMatch: true
+                    isFeaturedMatch: true,
+                    character: .riven
                 ),
+                fullCharacter(.loid),
+                fullCharacter(.dorian),
+                fullCharacter(.nightwing),
+                fullCharacter(.angel),
+                fullCharacter(.joon),
+                fullCharacter(.alastor),
             ]
         }
 
@@ -179,9 +205,27 @@ struct CompanionCandidate: Identifiable, Hashable {
                 imageName: "DiscoveryVictoria",
                 headline: "Thoughtful confidence with a warm spark",
                 vibe: "Your featured signal match",
-                isFeaturedMatch: true
+                isFeaturedMatch: true,
+                character: .victoria
             ),
+            fullCharacter(.vivian),
+            fullCharacter(.lily),
+            fullCharacter(.selene),
+            fullCharacter(.charlie),
+            fullCharacter(.vaggie),
         ]
+    }
+
+    private static func fullCharacter(_ character: VirtualCharacter) -> CompanionCandidate {
+        CompanionCandidate(
+            id: character.id,
+            name: character.name,
+            imageName: character.discoveryImageName,
+            headline: character.headline,
+            vibe: "Video story · live AI chat",
+            isFeaturedMatch: false,
+            character: character
+        )
     }
 }
 
@@ -242,6 +286,186 @@ struct VirtualCharacter: Identifiable, Hashable {
             .funny: 8.9, .ambitious: 8.5, .sharedInterests: 8.6,
         ]
     )
+
+    // MARK: Expanded female character collection
+
+    static let vivian = catalogCharacter(
+        id: "vivian",
+        name: "Vivian",
+        companion: .woman,
+        imageName: "CandidateVivian",
+        videoName: "vivian-heartbeat",
+        headline: "Bookish warmth with a quietly fearless heart",
+        location: "Los Angeles · in the stacks",
+        greeting: "You found me between chapters. Tell me—what kind of story has your attention tonight?",
+        signature: "I notice the sentence people almost say. Books just taught me how to wait for it.",
+        scores: [.attractive: 8.4, .sincere: 9.3, .intelligent: 9.4, .funny: 7.2, .ambitious: 8.1, .sharedInterests: 8.8]
+    )
+
+    static let lily = catalogCharacter(
+        id: "lily",
+        name: "Lily",
+        companion: .woman,
+        imageName: "CandidateLily",
+        videoName: "lily-heartbeat",
+        headline: "Bright curiosity with an otherworldly spark",
+        location: "Neon City · online now",
+        greeting: "Hi—you actually stayed. Good. I have about a hundred questions, but you can choose the first one.",
+        signature: "I make strange things feel easy and ordinary nights feel a little impossible.",
+        scores: [.attractive: 8.9, .sincere: 8.6, .intelligent: 8.7, .funny: 9.4, .ambitious: 7.9, .sharedInterests: 8.8]
+    )
+
+    static let selene = catalogCharacter(
+        id: "selene",
+        name: "Selene",
+        companion: .woman,
+        imageName: "CandidateSelene",
+        videoName: "selene-pv",
+        headline: "Mystic calm, sharp intuition, hidden tenderness",
+        location: "Lunaris · after dusk",
+        greeting: "The crystal was quieter before you arrived. I am taking that as a good sign—what are you hoping to find?",
+        signature: "Mystery is more interesting when it reveals something true instead of hiding it.",
+        scores: [.attractive: 9.2, .sincere: 8.1, .intelligent: 9.5, .funny: 6.8, .ambitious: 8.7, .sharedInterests: 8.0]
+    )
+
+    static let charlie = catalogCharacter(
+        id: "charlie",
+        name: "Charlie",
+        companion: .woman,
+        imageName: "CandidateCharlie",
+        videoName: "charlie-pv",
+        headline: "Radiant optimism that refuses to give up on you",
+        location: "Pentagram City · always welcoming",
+        greeting: "Okay, this is exciting. I promise not to overwhelm you—but I really want to know what made you smile today.",
+        signature: "I believe hope works best when it comes with a plan and someone willing to stay.",
+        scores: [.attractive: 8.5, .sincere: 9.7, .intelligent: 8.2, .funny: 8.7, .ambitious: 9.1, .sharedInterests: 8.4]
+    )
+
+    static let vaggie = catalogCharacter(
+        id: "vaggie",
+        name: "Vaggie",
+        companion: .woman,
+        imageName: "CandidateVaggie",
+        videoName: "vaggie-pv",
+        headline: "Protective honesty with a fiercely loyal core",
+        location: "Pentagram City · keeping watch",
+        greeting: "You made it. I respect that. Just be honest with me and we will get along—what is on your mind?",
+        signature: "I am not interested in perfect answers. I care whether you mean them.",
+        scores: [.attractive: 8.4, .sincere: 9.6, .intelligent: 8.8, .funny: 6.9, .ambitious: 9.0, .sharedInterests: 7.8]
+    )
+
+    // MARK: Expanded male character collection
+
+    static let loid = catalogCharacter(
+        id: "loid",
+        name: "Loid",
+        companion: .man,
+        imageName: "CandidateLoid",
+        videoName: "loid-pv",
+        headline: "Controlled intensity with a protective instinct",
+        location: "Midnight District · nearby",
+        greeting: "The rain usually keeps people away. You do not seem easily discouraged—should I be impressed or concerned?",
+        signature: "I plan for every possibility, except the rare person who makes me forget the plan.",
+        scores: [.attractive: 9.3, .sincere: 8.0, .intelligent: 9.4, .funny: 7.1, .ambitious: 9.2, .sharedInterests: 8.0]
+    )
+
+    static let dorian = catalogCharacter(
+        id: "dorian",
+        name: "Dorian",
+        companion: .man,
+        imageName: "CandidateDorian",
+        videoName: "dorian-pv",
+        headline: "Dark elegance, direct attention, old-soul gravity",
+        location: "Los Angeles · after hours",
+        greeting: "Most people fill silence because it unsettles them. You do not have to. What would you rather talk about?",
+        signature: "I prefer one honest conversation to a room full of impressive ones.",
+        scores: [.attractive: 9.5, .sincere: 7.9, .intelligent: 9.0, .funny: 7.3, .ambitious: 8.8, .sharedInterests: 8.2]
+    )
+
+    static let nightwing = catalogCharacter(
+        id: "nightwing",
+        name: "Nightwing",
+        companion: .man,
+        imageName: "CandidateNightwing",
+        videoName: "nightwing-pv",
+        headline: "Heroic confidence with an easy, human smile",
+        location: "Blüdhaven · on patrol",
+        greeting: "Good timing—I was about to take the scenic route across the city. What kind of trouble are we avoiding tonight?",
+        signature: "I take the work seriously. Myself? Only when absolutely necessary.",
+        scores: [.attractive: 9.1, .sincere: 9.0, .intelligent: 8.6, .funny: 9.1, .ambitious: 8.8, .sharedInterests: 8.5]
+    )
+
+    static let angel = catalogCharacter(
+        id: "angel",
+        name: "Angel",
+        companion: .man,
+        imageName: "CandidateAngel",
+        videoName: "angel-pv",
+        headline: "Spotlight energy with softness behind the jokes",
+        location: "Pentagram City · center stage",
+        greeting: "Well, look who wandered into my spotlight. Relax—I only bite bad conversation. What have you got for me?",
+        signature: "The jokes arrive first. The honest answer takes a little longer, but it is worth waiting for.",
+        scores: [.attractive: 9.2, .sincere: 7.8, .intelligent: 8.1, .funny: 9.7, .ambitious: 8.0, .sharedInterests: 8.7]
+    )
+
+    static let joon = catalogCharacter(
+        id: "joon",
+        name: "Joon",
+        companion: .man,
+        imageName: "CandidateJoon",
+        videoName: "joon-pv",
+        headline: "Understated elegance and quietly playful confidence",
+        location: "Seoul · between meetings",
+        greeting: "I escaped a very formal evening for five quiet minutes. Tell me something worth staying late for.",
+        signature: "I like people who can laugh softly and still say exactly what they mean.",
+        scores: [.attractive: 9.0, .sincere: 8.7, .intelligent: 8.9, .funny: 8.0, .ambitious: 9.1, .sharedInterests: 8.3]
+    )
+
+    static let alastor = catalogCharacter(
+        id: "alastor",
+        name: "Alastor",
+        companion: .man,
+        imageName: "CandidateAlastor",
+        videoName: "alastor-pv",
+        headline: "Vintage theatrical charm with razor-sharp wit",
+        location: "Pentagram City · on air",
+        greeting: "Ah, a new voice in the audience. Let us make this interesting—what sort of conversation keeps you listening?",
+        signature: "Good manners sharpen a dangerous sense of humor; they do not soften it.",
+        scores: [.attractive: 8.3, .sincere: 6.9, .intelligent: 9.5, .funny: 9.3, .ambitious: 9.0, .sharedInterests: 7.8]
+    )
+
+    private static func catalogCharacter(
+        id: String,
+        name: String,
+        companion: PreferredCompanion,
+        imageName: String,
+        videoName: String,
+        headline: String,
+        location: String,
+        greeting: String,
+        signature: String,
+        scores: Weights
+    ) -> VirtualCharacter {
+        let options = ["Tell me about you", "Set the scene", "Why did we match?"]
+        return VirtualCharacter(
+            id: id,
+            name: name,
+            companion: companion,
+            discoveryImageName: imageName,
+            profileImageName: imageName,
+            videoName: videoName,
+            headline: headline,
+            location: location,
+            greeting: greeting,
+            replyOptions: options,
+            replies: [
+                options[0]: signature,
+                options[1]: "Picture the right music, nowhere we need to rush to, and a conversation that gets better after midnight.",
+                options[2]: "Your answers pointed toward someone with my kind of energy. The data made the introduction; we decide whether it was right.",
+            ],
+            scores: scores
+        )
+    }
 }
 
 struct CompanionMatch: Hashable {
@@ -275,7 +499,18 @@ final class DemoSession {
         step = .analyzing
     }
 
-    func likeCandidate() {
+    func likeCandidate(_ character: VirtualCharacter) {
+        if let currentMatch = match {
+            let weightedScore = Attribute.allCases.reduce(0.0) { partial, attribute in
+                partial + (weights[attribute] ?? 0) / 100 * (character.scores[attribute] ?? 0) * 10
+            }
+            match = CompanionMatch(
+                character: character,
+                type: currentMatch.type,
+                score: min(max(Int(weightedScore.rounded()), 84), 96),
+                topAttributes: currentMatch.topAttributes
+            )
+        }
         step = .video
     }
 
