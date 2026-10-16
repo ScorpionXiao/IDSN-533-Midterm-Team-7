@@ -1,135 +1,85 @@
 # VibeMate — IDSN-533 Midterm Team 7
 
-VibeMate is an iOS concept demo for matching a user with a virtual companion. It uses the repository's speed-dating dataset to turn a few lightweight preference signals into a curated set of AI character cards, then demonstrates the intended future experience through a prerecorded personalized video and a live AI chat powered by the OpenAI API.
+VibeMate is an iOS course demo for discovering and talking with virtual AI companions. The current version is a five-tab app with personality-aware matching, prerecorded character videos, persistent conversations, editable user profiles, and a character community feed.
 
-This is a course demo, not a production dating service. Its purpose is to communicate the product journey and show how a data-informed recommendation can feel playful, visual, and emotionally engaging without making the user complete a long questionnaire.
+## Current experience
 
-## Current product direction
+First launch asks who the user wants to meet and two quick preference questions. Later launches restore the user's profile and open Discover directly.
 
-The current app is **VibeMate**. The intended experience is:
+- **Discover:** swipe through video-ready characters. Tap Like to flip a card into two character-specific questions. Answers with an affinity total of at least 3 out of 4 unlock the match animation, full-screen video, and chat. Less compatible answers show an animated waiting state and save a pending invitation in Messages.
+- **Likes you:** high-compatibility AI recommendations (at least 80% in the demo scoring rules), excluding existing connections and pending invitations. Liking one goes directly to the match video without the questions.
+- **Messages:** saved conversations, searchable by character name, plus pending invitations. Existing connections reopen the same chat history. Video replay is available in chat.
+- **Moments:** a sample feed of posts written in each character's voice. Local likes and comments persist between launches; users can view the preferred collection or everyone.
+- **Profile:** editable name, adult age, city, bio, local photo, companion preference, desired energy, ideal shared moment, communication style, and interests.
 
-1. The user chooses whether they would like to meet a woman or a man.
-2. The user answers two single-tap questions about the energy they want and an ideal shared moment.
-3. A short calculation animation communicates that the app is comparing those signals with the local dataset.
-4. The user swipes through a gender-specific collection of full-screen virtual companion cards.
-5. The first four cards preserve the original classroom-demo order, with the featured match fourth:
-   - Women: Sora → Amara → Leila → **Victoria**
-   - Men: Kai → Malik → Adrian → **Riven**
-6. Liking Victoria, Riven, or any additional story-ready character triggers a match animation and opens that character's full-screen prerecorded message.
-7. When the video finishes, the app automatically enters a simulated chat. A small skip button can enter chat immediately.
-8. The chat supports quick replies and custom text. With an API key, Victoria or Riven reply live through the OpenAI API, grounded in the user's computed type and the dataset. Without a key, the chat falls back to local scripted responses.
-9. For this development version, the sliders button in the chat header opens a temporary **Character content** editor. Teammates can adjust the current character's background, personality, relationship dynamic, speaking style, interests, and boundaries. Saved content is local to the device and is applied to the next API reply.
+The six old discovery-only placeholders (Sora, Amara, Leila, Kai, Malik, Adrian) are no longer shown. Their original images remain in the repository. All 13 active characters have a bundled video and persona:
 
-The interaction is deliberately short: one companion preference, two playful signals, one matching moment, and then the content experience.
+- Women: Victoria, Vivian, Lily, Selene, Charlie, Vaggie.
+- Men: Riven, Loid, Dorian, Nightwing, Angel, Joon, Alastor.
 
-## How the dataset supports the experience
+The old requirement to keep Victoria and Riven fourth is superseded by removing the video-less placeholders. They now begin their respective collections.
 
-All matching runs locally and uses the original repository resources:
+## Matching and the original database
 
-- **cards.json** contains individual speed-date partner ratings across six traits.
-- **participants.json** contains participant profiles, stated preferences, revealed preferences, interests, and assigned types.
-- **types.json** contains 15 aggregate preference types derived from 8,378 dating interactions.
+The original JSON datasets are preserved:
 
-The six shared traits are attractiveness, sincerity, intelligence, humor, ambition, and shared interests.
+- **cards.json:** individual speed-date partner ratings.
+- **participants.json:** participant profiles and preferences.
+- **types.json:** 15 aggregate preference types derived from 8,378 interactions.
 
-The two lightweight questions add weight to these traits. **DemoSession** normalizes the result to 100%, compares it with the revealed preference vector of every type in **types.json**, and selects the closest type using Euclidean distance. The app retains that type and a compatibility score in the demo model to support the matching story.
+The original six traits are attractiveness, sincerity, intelligence, humor, ambition, and shared interests. The two onboarding signals weight these traits; DemoSession normalizes the vector and finds the closest dataset type by Euclidean distance.
 
-The first three cards in each deck remain visual discovery candidates. Victoria and Riven remain the fastest presentation path in position four. The expanded collections then add the supplied `Sample-heartbeat` and `Sample-pv` characters, each with matching artwork or an extracted video still, prerecorded video, editable persona, and live AI chat.
+CompatibilityEngine combines the character's weighted trait scores (55%), desired energy (30%), and the user's communication style (15%). The displayed percentage is a demo heuristic, not a calibrated probability or a scientific prediction of romantic compatibility. Profile preference changes immediately update the collection and recommendations.
 
-- Women: Victoria, Vivian, Lily, Selene, Charlie, and Vaggie (plus the three opening discovery cards)
-- Men: Riven, Loid, Dorian, Nightwing, Angel, Joon, and Alastor (plus the three opening discovery cards)
+The two card-back questions are authored for each character's personality. Each option has an affinity of 0, 1, or 2. Two completed answers totaling at least 3 produce a match; lower totals remain pending. This is deterministic, local logic rather than an API model deciding acceptance. Persona content controls chat voice; changing a persona in the editor does not automatically rewrite the curated questions or temperament mappings.
 
-For a reliable classroom presentation, the current deck order is deterministic rather than fully generated by the data. Gender preference selects the women’s or men’s deck, while the two answers calculate a dataset-backed preference type. Victoria and Riven remain fixed as the fourth card for the prepared presentation path; additional complete characters follow them. The calculation animation represents this local comparison; it is not a claim that a production machine-learning recommender or remote AI service is running.
+The Likes you screen is a simulated incoming-interest feature populated from compatible AI recommendations. Characters do not autonomously send likes. Pending invitations remain pending in this demo; no background service or delayed acceptance is implemented.
 
-## Relationship to the original GitHub project
+## Chat and persona content
 
-The original repository content is not a separate product from VibeMate. It is the data and technical foundation that supports this version:
+Chat uses the existing OpenAI streaming client. Every request includes the character's structured persona and conversation history. The user's display name, bio, interests, and communication style are provided as user context. Avatar images remain on the device and are not sent to the chat API.
 
-- **Models/Attribute.swift**, **DataModels.swift**, **DataStore.swift**, and **TypeCalculator.swift** define and load the original dataset and preference model.
-- **Resources/cards.json**, **participants.json**, and **types.json** remain the source data for the matching story.
-- **Views/Charts.swift** and the earlier quiz/result views document earlier experiments and may be useful as reference.
-- **Views/VibeMateDemo.swift** and **Models/DemoModels.swift** define the current product behavior.
-- **FindYourTypeApp.swift** launches **VibeMateFlowView**, which is the current app entry point.
+Without an API configuration, the local scripted mode still works. With a configuration, messages stream from the API; connection errors are shown without discarding earlier messages.
 
-The old questionnaire-style screens are legacy experiments. They should not replace the VibeMate flow unless the team explicitly decides to change the product direction.
+The temporary sliders button in the chat header opens Character content. Each character has background, personality, relationship dynamic, speaking style, interests and habits, and boundaries. Edits are saved locally and apply to subsequent replies. Set PersonaEditorAccess.isEnabled to false to hide this temporary entrance without removing persona loading.
 
-## Guidance for AI coding assistants
+The persona instruction structure follows [OpenAI's prompt engineering guidance](https://developers.openai.com/api/docs/guides/prompt-engineering) on separating instructions and contextual data.
 
-When an AI assistant reads or modifies this repository, it should treat the current VibeMate v4 flow as the source of truth.
+## Persistence and demo scope
 
-- Preserve the short journey: preference → two signals → calculation → gender-specific character collection → match animation → full-screen video → chat.
-- Do not restore the long quiz, sliders, swipe-rating questionnaire, or analytics screen as the main experience.
-- Treat the original JSON files and data models as supporting infrastructure for VibeMate, not as requirements to rebuild the old interface.
-- Keep Victoria as the fourth featured women’s card and Riven as the fourth featured men’s card unless explicitly asked to change them.
-- The first three cards are discovery simulations; every character after the featured fourth card has an individual video, persona, and chat experience.
-- Keep the project self-contained. The only network call is the companion chat to the OpenAI API (Models/CompanionChatService.swift); never hardcode an API key in source.
-- Treat each character's structured persona content as authoritative for live chat. Preserve the system-prompt safety and AI-disclosure rules when expanding a persona.
-- `PersonaEditorAccess.isEnabled` controls the temporary direct-editing entrance. Set it to `false` when this internal page should be hidden from end users; do not remove persona loading or persistence.
-- Do not describe the prerecorded video as live generation. The chat is live only when an API key is configured; otherwise it is scripted.
-- Preserve existing user assets and unrelated team changes when editing the repository.
+Profile details, a compressed avatar image, conversation messages, invitations, post likes, and comments are saved locally using Codable and UserDefaults. Character-content edits use their own existing local store. These survive normal app relaunches, but not app deletion, and are not synchronized across devices. No login or backend account is implemented.
 
-## Demo scope and limitations
+Videos are supplied prerecorded content, not real-time generation. Community posts, timestamps, and baseline like counts are curated demo content; comments and extra likes belong only to this device. The existing matching dataset and earlier technical experiments support this app; the legacy long quiz is not the main interface.
 
-Implemented:
-
-- SwiftUI iPhone interface and animated transitions
-- Two lightweight preference questions
-- Local dataset-backed preference weighting
-- Brief matching/calculation animation
-- Expanded women’s and men’s character collections, with the original featured match retained fourth
-- Victoria and Riven match animations
-- Bundled full-screen video playback
-- Automatic video-to-chat transition
-- Skip-to-chat control
-- Live AI chat via the OpenAI API (streaming), with a scripted offline fallback
-- Per-character persona profiles and a temporary in-app content editor
-
-Simulated or out of scope:
-
-- Real-time generative video
-- User accounts, cloud storage, or authentication
-- Production recommendation training or evaluation
-- Safety, moderation, and relationship-policy systems required for a public release
-
-The expanded character artwork and videos were supplied in the team's `Sample-pv` and `Sample-heartbeat` folders for this course demo. Duplicate Victoria and Riven heartbeat files were reused rather than committed twice. Confirm the rights and licensing for every supplied character and media asset before any public or commercial release.
+The supplied Sample-pv and Sample-heartbeat media is bundled with the app. Existing Victoria and Riven videos are reused rather than duplicated.
 
 ## Run in Xcode
 
 1. Open **Data Sets/Data Sets.xcodeproj**.
-2. Select the **Data Sets** scheme.
-3. Choose an iPhone simulator, not **My Mac**.
-4. Press **Run** (⌘R).
+2. Choose the **Data Sets** scheme and an iPhone simulator.
+3. Run with **⌘R**.
 
-The app appears as **VibeMate**. It requires iOS 17 or later. Everything except the live chat runs offline.
+Requires iOS 17+. All features other than live chat work locally.
 
-## Set up the live chat (each teammate, once)
+Run the local model checks on macOS with Xcode installed: `bash Tests/run-state-checks.sh`.
 
-1. Get an API key at https://platform.openai.com/api-keys (the account needs billing credit).
-2. Copy **Data Sets/APIConfig.example.plist** to **Data Sets/Data Sets/APIConfig.plist** (next to FindYourTypeApp.swift).
-3. Replace `PASTE_YOUR_KEY_HERE` with your key. Optionally change `OpenAIModel`.
-4. Build and run. Xcode picks the file up automatically.
+## Local API configuration
 
-**APIConfig.plist** is listed in **.gitignore**, so your key is never committed. Alternatively, set an `OPENAI_API_KEY` environment variable in the scheme (Product → Scheme → Edit Scheme → Run → Arguments). If no key is found, the chat shows "Offline demo mode" and uses the scripted replies. Note that a key bundled in an app can be extracted, which is fine for a class demo but not for a public release.
+Copy **Data Sets/APIConfig.example.plist** to **Data Sets/Data Sets/APIConfig.plist**, beside FindYourTypeApp.swift, and fill in your own OpenAI key and model. Xcode automatically bundles it. APIConfig.plist is gitignored and must never be committed. An OPENAI_API_KEY scheme environment variable is also supported. The existing local configuration is retained.
 
 ## Main files
 
-- **Data Sets/Data Sets/Views/VibeMateDemo.swift** — current end-to-end interface, animations, video, and chat
-- **Data Sets/Data Sets/Models/CompanionChatService.swift** — OpenAI API streaming client, key loading, and the character system prompt
-- **Data Sets/Data Sets/Models/PersonaContent.swift** — persona structure, bundled-default loading, local edits, and the temporary editor access flag
-- **Data Sets/Data Sets/Models/DemoModels.swift** — current matching state, candidate decks, weights, and chat scripts
-- **Data Sets/Data Sets/FindYourTypeApp.swift** — app entry point
-- **Data Sets/Data Sets/Models/DataStore.swift** — local JSON loader
-- **Data Sets/Data Sets/Models/TypeCalculator.swift** — shared preference calculations
-- **Data Sets/Data Sets/Resources/** — JSON datasets and bundled Victoria/Riven videos
-- **Data Sets/Data Sets/Resources/Personas/** — detailed default background, personality, voice, habits, relationship behavior, and boundaries for each featured character
-- **Data Sets/Data Sets/Assets.xcassets/** — candidate, discovery, and character artwork
+- **Models/DatingAppState.swift:** profile, persistent conversations/invitations/community state, character collections, compatibility rules, and per-character questions.
+- **Views/DatingAppViews.swift:** five-tab shell, adaptive discovery card and flip, questions, pending animation, Likes you, Messages, Moments, and profile/photo editor.
+- **Views/VibeMateDemo.swift:** onboarding, calculation, full-screen video, live chat, and persona editor.
+- **Models/DemoModels.swift:** characters, dataset weighting, match model, and flow state.
+- **Models/PersonaContent.swift:** structured persona content and temporary editor access.
+- **Models/CompanionChatService.swift:** streaming API client and persona prompt.
+- **Resources/Personas/**, **Resources/Videos/**, **Assets.xcassets/**: character content and media.
+- **Tests/DatingStateChecks.swift:** local checks for character gates, invitation isolation, persisted chats/profile/community state, and recommendation coverage.
 
-## Technical notes
+All Models and Views paths above are relative to **Data Sets/Data Sets/**.
 
-- Platform: iOS 17+
-- UI: SwiftUI
-- Video: AVKit / AVPlayer
-- Persistence: none
-- Networking: URLSession, OpenAI Chat Completions API (chat only)
-- External dependencies: none
-- Bundle identifier: **team7.Data-Sets**
+## Guidance for AI coding assistants
+
+Treat the five-tab VibeMate flow as the current product. Preserve the original JSON data and team assets. Do not restore video-less placeholders or the old long questionnaire. Keep pending and matched states distinct; only matching or a direct Likes you acceptance unlocks video/chat. Do not fabricate historical conversations. Keep API keys untracked, and preserve unrelated teammate changes.

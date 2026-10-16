@@ -103,129 +103,16 @@ enum PerfectMoment: String, CaseIterable, Identifiable {
 }
 
 struct CompanionCandidate: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let imageName: String
-    let headline: String
-    let vibe: String
-    let isFeaturedMatch: Bool
-    let character: VirtualCharacter?
-
-    init(
-        id: String,
-        name: String,
-        imageName: String,
-        headline: String,
-        vibe: String,
-        isFeaturedMatch: Bool,
-        character: VirtualCharacter? = nil
-    ) {
-        self.id = id
-        self.name = name
-        self.imageName = imageName
-        self.headline = headline
-        self.vibe = vibe
-        self.isFeaturedMatch = isFeaturedMatch
-        self.character = character
-    }
+    let character: VirtualCharacter
+    var id: String { character.id }
+    var name: String { character.name }
+    var imageName: String { character.discoveryImageName }
+    var headline: String { character.headline }
+    var vibe: String { character.tags.joined(separator: " · ") }
+    var isFeaturedMatch: Bool { character.id == "victoria" || character.id == "riven" }
 
     static func options(for preference: PreferredCompanion?) -> [CompanionCandidate] {
-        if preference == .man {
-            return [
-                CompanionCandidate(
-                    id: "kai",
-                    name: "Kai",
-                    imageName: "CandidateKai",
-                    headline: "Calm focus, quiet confidence",
-                    vibe: "Architect · late-night city walks",
-                    isFeaturedMatch: false
-                ),
-                CompanionCandidate(
-                    id: "malik",
-                    name: "Malik",
-                    imageName: "CandidateMalik",
-                    headline: "Warm humor with an old-soul playlist",
-                    vibe: "Music lover · effortless conversation",
-                    isFeaturedMatch: false
-                ),
-                CompanionCandidate(
-                    id: "adrian",
-                    name: "Adrian",
-                    imageName: "CandidateAdrian",
-                    headline: "Curious, composed and unexpectedly romantic",
-                    vibe: "Reader · rainy-night energy",
-                    isFeaturedMatch: false
-                ),
-                CompanionCandidate(
-                    id: "riven",
-                    name: "Riven",
-                    imageName: "DiscoveryRiven",
-                    headline: "Magnetic energy with a playful edge",
-                    vibe: "Your featured signal match",
-                    isFeaturedMatch: true,
-                    character: .riven
-                ),
-                fullCharacter(.loid),
-                fullCharacter(.dorian),
-                fullCharacter(.nightwing),
-                fullCharacter(.angel),
-                fullCharacter(.joon),
-                fullCharacter(.alastor),
-            ]
-        }
-
-        return [
-            CompanionCandidate(
-                id: "sora",
-                name: "Sora",
-                imageName: "CandidateSora",
-                headline: "Quiet confidence with a curious mind",
-                vibe: "Designer · rooftop conversations",
-                isFeaturedMatch: false
-            ),
-            CompanionCandidate(
-                id: "amara",
-                name: "Amara",
-                imageName: "CandidateAmara",
-                headline: "Warm, soulful and effortlessly magnetic",
-                vibe: "Music lover · vinyl after dark",
-                isFeaturedMatch: false
-            ),
-            CompanionCandidate(
-                id: "leila",
-                name: "Leila",
-                imageName: "CandidateLeila",
-                headline: "Creative energy with thoughtful depth",
-                vibe: "Artist · notices the little things",
-                isFeaturedMatch: false
-            ),
-            CompanionCandidate(
-                id: "victoria",
-                name: "Victoria",
-                imageName: "DiscoveryVictoria",
-                headline: "Thoughtful confidence with a warm spark",
-                vibe: "Your featured signal match",
-                isFeaturedMatch: true,
-                character: .victoria
-            ),
-            fullCharacter(.vivian),
-            fullCharacter(.lily),
-            fullCharacter(.selene),
-            fullCharacter(.charlie),
-            fullCharacter(.vaggie),
-        ]
-    }
-
-    private static func fullCharacter(_ character: VirtualCharacter) -> CompanionCandidate {
-        CompanionCandidate(
-            id: character.id,
-            name: character.name,
-            imageName: character.discoveryImageName,
-            headline: character.headline,
-            vibe: "Video story · live AI chat",
-            isFeaturedMatch: false,
-            character: character
-        )
+        VirtualCharacter.collection(for: preference ?? .woman).map { CompanionCandidate(character: $0) }
     }
 }
 
@@ -499,19 +386,26 @@ final class DemoSession {
         step = .analyzing
     }
 
-    func likeCandidate(_ character: VirtualCharacter) {
-        if let currentMatch = match {
-            let weightedScore = Attribute.allCases.reduce(0.0) { partial, attribute in
-                partial + (weights[attribute] ?? 0) / 100 * (character.scores[attribute] ?? 0) * 10
-            }
-            match = CompanionMatch(
-                character: character,
-                type: currentMatch.type,
-                score: min(max(Int(weightedScore.rounded()), 84), 96),
-                topAttributes: currentMatch.topAttributes
-            )
+    func likeCandidate(_ character: VirtualCharacter, profile: DatingProfile? = nil) {
+        let currentMatch = match
+        let weightedScore = Attribute.allCases.reduce(0.0) { partial, attribute in
+            partial + (weights[attribute] ?? 0) / 100 * (character.scores[attribute] ?? 0) * 10
         }
+        match = CompanionMatch(
+            character: character,
+            type: currentMatch?.type,
+            score: profile.map { CompatibilityEngine.score(character, profile: $0, weights: weights) }
+                ?? min(max(Int(weightedScore.rounded()), 0), 100),
+            topAttributes: currentMatch?.topAttributes ?? Array(TypeCalculator.ranked(weights).prefix(3))
+        )
         step = .video
+    }
+
+    func applyProfile(_ profile: DatingProfile, store: DataStore) {
+        preferredCompanion = PreferredCompanion(rawValue: profile.preference) ?? .woman
+        selectedEnergy = CompanionEnergy(rawValue: profile.energy) ?? .calm
+        selectedMoment = PerfectMoment(rawValue: profile.moment) ?? .coffee
+        buildMatch(store: store)
     }
 
     func reset() {

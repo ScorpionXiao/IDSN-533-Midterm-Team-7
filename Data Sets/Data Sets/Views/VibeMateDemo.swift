@@ -4,6 +4,7 @@ import AVKit
 struct VibeMateFlowView: View {
     @Environment(DataStore.self) private var store
     @State private var session = DemoSession()
+    @State private var appState = DatingAppState()
 
     var body: some View {
         ZStack {
@@ -17,7 +18,7 @@ struct VibeMateFlowView: View {
             case .analyzing:
                 MatchingCalculationView(store: store)
             case .discovery:
-                CharacterDiscoveryView()
+                DatingTabShell()
             case .video:
                 if let match = session.match {
                     FullScreenMessageVideoView(character: match.character)
@@ -25,18 +26,35 @@ struct VibeMateFlowView: View {
             case .chat:
                 if let match = session.match {
                     CompanionChatView(match: match)
+                        .id(match.character.id)
                 }
             }
         }
         .environment(session)
+        .environment(appState)
         .preferredColorScheme(.dark)
         .animation(.smooth(duration: 0.42), value: session.step)
+        .task {
+            if appState.profile.hasOnboarded {
+                session.applyProfile(appState.profile, store: store)
+                session.step = .discovery
+            }
+        }
+        .onChange(of: session.step) { _, step in
+            if step == .discovery && !appState.profile.hasOnboarded {
+                appState.completeOnboarding(
+                    preference: session.preferredCompanion,
+                    energy: session.selectedEnergy,
+                    moment: session.selectedMoment
+                )
+            }
+        }
     }
 }
 
 // MARK: - Shared visual system
 
-private struct VibeBackground: View {
+struct VibeBackground: View {
     var body: some View {
         ZStack {
             LinearGradient(
@@ -65,7 +83,7 @@ private struct VibeBackground: View {
     }
 }
 
-private struct VibeWordmark: View {
+struct VibeWordmark: View {
     var compact = false
 
     var body: some View {
@@ -89,7 +107,7 @@ private struct VibeWordmark: View {
     }
 }
 
-private struct FilledActionButton: View {
+struct FilledActionButton: View {
     let title: String
     let symbol: String
     let action: () -> Void
@@ -115,7 +133,7 @@ private struct FilledActionButton: View {
     }
 }
 
-private extension Color {
+extension Color {
     static let vibePink = Color(red: 1.0, green: 0.27, blue: 0.55)
     static let vibePurple = Color(red: 0.57, green: 0.31, blue: 1.0)
     static let vibeCyan = Color(red: 0.28, green: 0.83, blue: 0.94)
@@ -384,7 +402,7 @@ private struct MatchingCalculationView: View {
     private let messages = [
         "Reading your signals",
         "Comparing 15 preference patterns",
-        "Curating your four companions",
+        "Finding personalities in your orbit",
         "Your matches are ready",
     ]
 
@@ -470,236 +488,6 @@ private struct MatchingCalculationView: View {
     }
 }
 
-// MARK: - Step 2: visual character discovery
-
-private struct CharacterDiscoveryView: View {
-    @Environment(DemoSession.self) private var session
-    @State private var cardAppeared = false
-    @State private var liked = false
-    @State private var selectedIndex = 0
-
-    private var candidates: [CompanionCandidate] {
-        CompanionCandidate.options(for: session.preferredCompanion)
-    }
-
-    private var currentCandidate: CompanionCandidate {
-        candidates[min(selectedIndex, candidates.count - 1)]
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button {
-                    session.step = .question
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.headline)
-                        .frame(width: 42, height: 42)
-                        .background(.black.opacity(0.24), in: Circle())
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-                VibeWordmark(compact: true)
-                Spacer()
-                Color.clear.frame(width: 42, height: 42)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 8)
-
-            TabView(selection: $selectedIndex) {
-                ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
-                    DiscoveryCandidateCard(candidate: candidate)
-                        .tag(index)
-                        .padding(.horizontal, 16)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 595)
-            .padding(.top, 10)
-            .scaleEffect(cardAppeared ? 1 : 0.94)
-            .opacity(cardAppeared ? 1 : 0)
-
-            HStack(spacing: 7) {
-                ForEach(candidates.indices, id: \.self) { index in
-                    Capsule()
-                        .fill(index == selectedIndex ? Color.vibePink : Color.white.opacity(0.2))
-                        .frame(width: index == selectedIndex ? 24 : 7, height: 7)
-                }
-            }
-            .animation(.spring(response: 0.35, dampingFraction: 0.78), value: selectedIndex)
-            .padding(.top, 12)
-
-            Spacer(minLength: 4)
-
-            HStack(spacing: 28) {
-                Button {
-                    moveToNextCandidate()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.74))
-                        .frame(width: 62, height: 62)
-                        .background(.white.opacity(0.08), in: Circle())
-                        .overlay { Circle().stroke(.white.opacity(0.1)) }
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    if let character = currentCandidate.character {
-                        liked = true
-                        Task {
-                            try? await Task.sleep(for: .milliseconds(650))
-                            session.likeCandidate(character)
-                        }
-                    } else {
-                        moveToNextCandidate()
-                    }
-                } label: {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 31, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 82, height: 82)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.vibePink, Color.vibePurple],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            in: Circle()
-                        )
-                        .shadow(color: Color.vibePink.opacity(0.48), radius: 22, y: 10)
-                        .scaleEffect(liked ? 1.22 : 1)
-                }
-                .buttonStyle(.plain)
-
-                Image(systemName: "sparkles")
-                    .font(.title2)
-                    .foregroundStyle(Color.vibeCyan)
-                    .frame(width: 62, height: 62)
-                    .background(.white.opacity(0.08), in: Circle())
-                    .overlay { Circle().stroke(.white.opacity(0.1)) }
-            }
-            .padding(.bottom, 4)
-
-            Text(
-                currentCandidate.character != nil
-                    ? "Tap the heart to meet \(currentCandidate.name)"
-                    : "Swipe to explore · \(selectedIndex + 1) of \(candidates.count)"
-            )
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.46))
-                .padding(.bottom, 12)
-        }
-        .overlay {
-            if liked {
-                ZStack {
-                    Color.black.opacity(0.58)
-                        .ignoresSafeArea()
-
-                    VStack(spacing: 18) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.vibePink.opacity(0.28))
-                                .frame(width: 190, height: 190)
-                                .blur(radius: 18)
-                            Circle()
-                                .fill(LinearGradient(
-                                    colors: [Color.vibePink, Color.vibePurple],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ))
-                                .frame(width: 112, height: 112)
-                            Image(systemName: "heart.fill")
-                                .font(.system(size: 46))
-                                .foregroundStyle(.white)
-                        }
-
-                        Text("It’s a match")
-                            .font(.system(size: 35, weight: .bold, design: .rounded))
-                        Text("\(currentCandidate.name) sent you a message")
-                            .foregroundStyle(.white.opacity(0.68))
-                    }
-                    .transition(.scale.combined(with: .opacity))
-                }
-            }
-        }
-        .sensoryFeedback(.success, trigger: liked)
-        .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.82)) {
-                cardAppeared = true
-            }
-        }
-    }
-
-    private func moveToNextCandidate() {
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) {
-            if selectedIndex < candidates.count - 1 {
-                selectedIndex += 1
-            } else {
-                selectedIndex = 0
-            }
-        }
-    }
-}
-
-private struct DiscoveryCandidateCard: View {
-    let candidate: CompanionCandidate
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            Image(candidate.imageName)
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity)
-                .frame(height: 595)
-                .clipped()
-
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.08), .black.opacity(0.92)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 7) {
-                    Circle()
-                        .fill(candidate.character != nil ? Color.vibePink : Color.green)
-                        .frame(width: 8, height: 8)
-                    Text(
-                        candidate.isFeaturedMatch
-                            ? "FEATURED SIGNAL MATCH"
-                            : candidate.character != nil ? "STORY READY" : "CURATED FOR YOU"
-                    )
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.35)
-                }
-                .foregroundStyle(.white.opacity(0.78))
-
-                Text(candidate.name)
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
-
-                Text(candidate.headline)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.78))
-
-                Text(candidate.vibe)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(.ultraThinMaterial, in: Capsule())
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(24)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 34, style: .continuous)
-                .stroke(.white.opacity(0.12))
-        }
-        .shadow(color: .black.opacity(0.42), radius: 24, y: 14)
-    }
-}
 
 // MARK: - Full-screen message video
 
@@ -877,19 +665,10 @@ private struct FullScreenMessageVideoView: View {
 
 // MARK: - Companion chat (live OpenAI API, scripted fallback)
 
-private struct DemoChatMessage: Identifiable, Hashable {
-    enum Kind: Hashable { case user, companion, notice }
-
-    let id = UUID()
-    var text: String
-    let kind: Kind
-
-    var isUser: Bool { kind == .user }
-}
-
 private struct CompanionChatView: View {
     @Environment(DemoSession.self) private var session
     @Environment(DataStore.self) private var store
+    @Environment(DatingAppState.self) private var appState
     let match: CompanionMatch
     @State private var messages: [DemoChatMessage]
     @State private var draft = ""
@@ -970,6 +749,9 @@ private struct CompanionChatView: View {
                     .foregroundStyle(.white.opacity(0.68))
                     .frame(width: 38, height: 38)
                     .background(.white.opacity(0.08), in: Circle())
+                    .onTapGesture { session.step = .video }
+                    .accessibilityLabel("Replay \(character.name)'s video")
+                    .accessibilityAddTraits(.isButton)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -978,7 +760,7 @@ private struct CompanionChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        Text("Today")
+                        Text("Your connection with \(character.name)")
                             .font(.caption2)
                             .foregroundStyle(.white.opacity(0.38))
                             .padding(.vertical, 8)
@@ -1014,6 +796,7 @@ private struct CompanionChatView: View {
                                 usedQuickReply = true
                                 send(option)
                             }
+                            .disabled(isTyping)
                             .font(.subheadline.weight(.medium))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
@@ -1062,8 +845,20 @@ private struct CompanionChatView: View {
             .padding(.bottom, 10)
             .background(.black.opacity(0.18))
         }
+        .onAppear {
+            appState.accept(character)
+            if let saved = appState.conversation(for: character.id), !saved.messages.isEmpty {
+                messages = saved.messages
+            }
+            appState.markRead(character.id)
+            usedQuickReply = messages.contains { $0.kind == .user }
+        }
+        .onChange(of: messages) {
+            if !isTyping { appState.saveMessages(messages, for: character) }
+        }
         .onDisappear {
             replyTask?.cancel()
+            appState.saveMessages(messages, for: character)
         }
         .sheet(isPresented: $showingPersonaEditor) {
             PersonaContentEditorView(character: character, initialContent: personaContent) { updated in
@@ -1080,10 +875,12 @@ private struct CompanionChatView: View {
     }
 
     private func send(_ text: String) {
+        guard !isTyping else { return }
         withAnimation {
             messages.append(DemoChatMessage(text: text, kind: .user))
             isTyping = true
         }
+        appState.saveMessages(messages, for: character)
 
         if let chatService {
             replyTask = Task { await streamLiveReply(using: chatService) }
@@ -1094,7 +891,7 @@ private struct CompanionChatView: View {
 
     /// Sends the whole conversation to the model and grows one bubble as text streams in.
     private func streamLiveReply(using service: CompanionChatService) async {
-        var turns = [ChatTurn(role: .user, text: CompanionPrompt.openingTurn)]
+        var turns = [ChatTurn(role: .user, text: CompanionPrompt.openingTurn + "\n" + appState.profile.chatContext)]
         for message in messages {
             switch message.kind {
             case .user: turns.append(ChatTurn(role: .user, text: message.text))
@@ -1108,6 +905,7 @@ private struct CompanionChatView: View {
         do {
             for try await chunk in service.streamReply(system: system, turns: turns) {
                 if let index = bubbleIndex {
+                    guard !Task.isCancelled, messages.indices.contains(index) else { break }
                     messages[index].text += chunk
                 } else {
                     withAnimation {
@@ -1119,6 +917,7 @@ private struct CompanionChatView: View {
         } catch is CancellationError {
             // The user left the chat; nothing to show.
         } catch {
+            guard !Task.isCancelled else { return }
             withAnimation {
                 messages.append(DemoChatMessage(
                     text: "Couldn't reach \(character.name): \(error.localizedDescription)",
@@ -1127,11 +926,12 @@ private struct CompanionChatView: View {
             }
         }
         withAnimation { isTyping = false }
+        appState.saveMessages(messages, for: character)
     }
 
     /// Offline fallback that keeps the classroom demo working without a key.
     private func scriptedReply(to text: String) async {
-        try? await Task.sleep(for: .milliseconds(720))
+        do { try await Task.sleep(for: .milliseconds(720)) } catch { return }
         let reply = character.replies[text]
             ?? "I like where this is going. Add an API key and I can really talk with you."
         withAnimation {
