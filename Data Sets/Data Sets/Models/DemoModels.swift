@@ -386,7 +386,8 @@ final class DemoSession {
         step = .analyzing
     }
 
-    func likeCandidate(_ character: VirtualCharacter, profile: DatingProfile? = nil) {
+    /// A score from RecommendationEngine keeps the chat in step with the number shown on the card.
+    func likeCandidate(_ character: VirtualCharacter, profile: DatingProfile? = nil, score: Int? = nil) {
         let currentMatch = match
         let weightedScore = Attribute.allCases.reduce(0.0) { partial, attribute in
             partial + (weights[attribute] ?? 0) / 100 * (character.scores[attribute] ?? 0) * 10
@@ -394,7 +395,8 @@ final class DemoSession {
         match = CompanionMatch(
             character: character,
             type: currentMatch?.type,
-            score: profile.map { CompatibilityEngine.score(character, profile: $0, weights: weights) }
+            score: score
+                ?? profile.map { CompatibilityEngine.score(character, profile: $0, weights: weights) }
                 ?? min(max(Int(weightedScore.rounded()), 0), 100),
             topAttributes: currentMatch?.topAttributes ?? Array(TypeCalculator.ranked(weights).prefix(3))
         )

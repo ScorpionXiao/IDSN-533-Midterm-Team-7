@@ -677,6 +677,9 @@ private struct CompanionChatView: View {
     @State private var replyTask: Task<Void, Never>?
     @State private var personaContent: PersonaContent
     @State private var showingPersonaEditor = false
+    @State private var affinity = AffinityRules.unlockThreshold
+    @State private var videoUnlocked = true
+    @State private var affinityToast: String?
     private let chatService: CompanionChatService?
 
     private var character: VirtualCharacter { match.character }
@@ -745,17 +748,39 @@ private struct CompanionChatView: View {
                     .accessibilityLabel("Edit \(character.name)'s character content")
                 }
 
-                Image(systemName: "video.fill")
-                    .foregroundStyle(.white.opacity(0.68))
+                Image(systemName: videoUnlocked ? "video.fill" : "lock.fill")
+                    .foregroundStyle(.white.opacity(videoUnlocked ? 0.68 : 0.4))
                     .frame(width: 38, height: 38)
                     .background(.white.opacity(0.08), in: Circle())
-                    .onTapGesture { session.step = .video }
-                    .accessibilityLabel("Replay \(character.name)'s video")
+                    .onTapGesture {
+                        if videoUnlocked {
+                            session.step = .video
+                        } else {
+                            withAnimation { affinityToast = "Reach \(AffinityRules.unlockThreshold) ❤ to unlock \(character.name)'s video" }
+                        }
+                    }
+                    .accessibilityLabel(videoUnlocked ? "Replay \(character.name)'s video" : "\(character.name)'s video is locked")
                     .accessibilityAddTraits(.isButton)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(.black.opacity(0.16))
+
+            AffinityMeter(affinity: affinity)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.1))
+                .overlay(alignment: .bottom) {
+                    if let affinityToast {
+                        Text(affinityToast)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(Color.vibePurple.opacity(0.92), in: Capsule())
+                            .offset(y: 30)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
+                .zIndex(1)
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -766,8 +791,10 @@ private struct CompanionChatView: View {
                             .padding(.vertical, 8)
 
                         ForEach(messages) { message in
-                            ChatBubble(message: message)
-                                .id(message.id)
+                            ChatBubble(message: message, imageName: character.discoveryImageName) {
+                                session.step = .video
+                            }
+                            .id(message.id)
                         }
 
                         if isTyping && messages.last?.kind != .companion {
@@ -852,6 +879,15 @@ private struct CompanionChatView: View {
             }
             appState.markRead(character.id)
             usedQuickReply = messages.contains { $0.kind == .user }
+            if let saved = appState.conversation(for: character.id) {
+                affinity = saved.affinity
+                videoUnlocked = saved.videoUnlocked
+            }
+        }
+        .task(id: affinityToast) {
+            guard affinityToast != nil else { return }
+            do { try await Task.sleep(for: .seconds(2.6)) } catch { return }
+            withAnimation { affinityToast = nil }
         }
         .onChange(of: messages) {
             if !isTyping { appState.saveMessages(messages, for: character) }
@@ -892,16 +928,11 @@ private struct CompanionChatView: View {
     /// Sends the whole conversation to the model and grows one bubble as text streams in.
     private func streamLiveReply(using service: CompanionChatService) async {
         var turns = [ChatTurn(role: .user, text: CompanionPrompt.openingTurn + "\n" + appState.profile.chatContext)]
-        for message in messages {
-            switch message.kind {
-            case .user: turns.append(ChatTurn(role: .user, text: message.text))
-            case .companion: turns.append(ChatTurn(role: .assistant, text: message.text))
-            case .notice: break
-            }
-        }
-        let system = CompanionPrompt.system(for: match, summary: store.summary, persona: personaContent)
+        turns += conversationTurns()
+        let system = CompanionPrompt.system(for: match, summary: store.summary, persona: personaContent, affinity: affinity)
 
         var bubbleIndex: Int?
+        var replied = false
         do {
             for try await chunk in service.streamReply(system: system, turns: turns) {
                 if let index = bubbleIndex {
@@ -914,6 +945,7 @@ private struct CompanionChatView: View {
                     bubbleIndex = messages.count - 1
                 }
             }
+            replied = bubbleIndex != nil && !Task.isCancelled
         } catch is CancellationError {
             // The user left the chat; nothing to show.
         } catch {
@@ -927,6 +959,54 @@ private struct CompanionChatView: View {
         }
         withAnimation { isTyping = false }
         appState.saveMessages(messages, for: character)
+        if replied { await updateAffinity(using: service) }
+    }
+
+    private func conversationTurns() -> [ChatTurn] {
+        messages.compactMap { message -> ChatTurn? in
+            switch message.kind {
+            case .user: return ChatTurn(role: .user, text: message.text)
+            case .companion: return ChatTurn(role: .assistant, text: message.text)
+            case .video: return ChatTurn(role: .assistant, text: "[\(character.name) sent the user a personal video message.]")
+            case .notice: return nil
+            }
+        }
+    }
+
+    /// Lets the model rate the user's last message, then applies the clamped change.
+    /// Falls back to a small local rule if the request fails or there is no API key.
+    private func updateAffinity(using service: CompanionChatService?) async {
+        guard let lastUserText = messages.last(where: { $0.kind == .user })?.text else { return }
+        var judgement = AffinityJudgement(delta: AffinityRules.fallbackDelta(for: lastUserText), reason: "")
+        if let service {
+            do {
+                judgement = try await service.judgeAffinity(
+                    characterName: character.name,
+                    persona: personaContent.markdown,
+                    affinity: affinity,
+                    turns: conversationTurns()
+                )
+            } catch {
+                guard !Task.isCancelled else { return }
+            }
+        }
+        guard !Task.isCancelled, let result = appState.applyAffinity(judgement.delta, for: character) else { return }
+        let change = result.affinity - affinity
+        withAnimation {
+            affinity = result.affinity
+            if change != 0 {
+                let sign = change > 0 ? "+" : ""
+                affinityToast = judgement.reason.isEmpty ? "\(sign)\(change) ❤" : "\(sign)\(change) ❤ · \(judgement.reason)"
+            }
+        }
+        if result.unlockedNow {
+            do { try await Task.sleep(for: .milliseconds(900)) } catch { return }
+            withAnimation {
+                videoUnlocked = true
+                messages.append(DemoChatMessage(text: "I made something just for you. 💌", kind: .video))
+            }
+            appState.saveMessages(messages, for: character)
+        }
     }
 
     /// Offline fallback that keeps the classroom demo working without a key.
@@ -938,6 +1018,8 @@ private struct CompanionChatView: View {
             isTyping = false
             messages.append(DemoChatMessage(text: reply, kind: .companion))
         }
+        appState.saveMessages(messages, for: character)
+        await updateAffinity(using: nil)
     }
 }
 
@@ -1098,9 +1180,13 @@ private struct PersonaEditorField: View {
 
 private struct ChatBubble: View {
     let message: DemoChatMessage
+    var imageName: String?
+    var onPlayVideo: () -> Void = {}
 
     var body: some View {
-        if message.kind == .notice {
+        if message.kind == .video {
+            videoCard
+        } else if message.kind == .notice {
             Text(message.text)
                 .font(.caption)
                 .multilineTextAlignment(.center)
@@ -1111,6 +1197,38 @@ private struct ChatBubble: View {
                 .frame(maxWidth: .infinity)
         } else {
             bubble
+        }
+    }
+
+    /// The unlocked video, sent by the character as a message.
+    private var videoCard: some View {
+        HStack {
+            Button(action: onPlayVideo) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ZStack {
+                        if let imageName {
+                            Image(imageName).resizable().scaledToFill()
+                        } else {
+                            Color.vibePurple.opacity(0.4)
+                        }
+                        Color.black.opacity(0.28)
+                        Image(systemName: "play.fill")
+                            .font(.title2)
+                            .frame(width: 54, height: 54)
+                            .background(.white.opacity(0.22), in: Circle())
+                    }
+                    .frame(width: 190, height: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                    Text(message.text).font(.subheadline)
+                    Label("Video unlocked", systemImage: "lock.open.fill")
+                        .font(.caption2.weight(.semibold)).foregroundStyle(Color.vibeCyan)
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Play video message")
+            Spacer(minLength: 64)
         }
     }
 

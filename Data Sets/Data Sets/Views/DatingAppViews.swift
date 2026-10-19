@@ -54,6 +54,10 @@ struct DatingTabShell: View {
 private struct DatingDiscoverView: View {
     @Environment(DatingAppState.self) private var appState
     @Environment(DemoSession.self) private var session
+    @Environment(DataStore.self) private var store
+    @State private var deck: [VirtualCharacter] = []
+    @State private var lastChoice: (name: String, liked: Bool)?
+    @State private var rerankNote: String?
     @State private var index = 0
     @State private var phase: CardPhase = .front
     @State private var rotation = 0.0
@@ -63,7 +67,7 @@ private struct DatingDiscoverView: View {
     @State private var showingPreferences = false
 
     private enum CardPhase: String { case front, questions, evaluating, waiting, success }
-    private var characters: [VirtualCharacter] { appState.characters }
+    private var characters: [VirtualCharacter] { deck.isEmpty ? appState.characters : deck }
     private var character: VirtualCharacter? {
         characters.isEmpty ? nil : characters[index % characters.count]
     }
@@ -111,9 +115,19 @@ private struct DatingDiscoverView: View {
                                 .onEnded { value in
                                     guard phase == .front else { return }
                                     if value.translation.width > 90 { beginQuestions(character) }
-                                    else if value.translation.width < -90 { advance() }
+                                    else if value.translation.width < -90 { pass(character) }
                                     withAnimation(.spring(response: 0.4)) { dragOffset = .zero }
                                 })
+                    }
+                    .overlay(alignment: .top) {
+                        if let rerankNote {
+                            Label(rerankNote, systemImage: "arrow.up.arrow.down")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 14).padding(.vertical, 9)
+                                .background(Color.vibePurple.opacity(0.9), in: Capsule())
+                                .offset(y: -14)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -127,7 +141,17 @@ private struct DatingDiscoverView: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showingPreferences) { ProfileEditorView() }
-        .onChange(of: appState.profile) { resetCard() }
+        .onAppear { if deck.isEmpty { restoreDeck() } }
+        .task(id: rerankNote) {
+            guard rerankNote != nil else { return }
+            do { try await Task.sleep(for: .seconds(2.5)) } catch { return }
+            withAnimation { rerankNote = nil }
+        }
+        .onChange(of: appState.profile) {
+            resetCard()
+            rebuildDeck()
+        }
+        .onChange(of: session.weights) { rebuildDeck() }
         .task(id: phase) {
             guard let character else { return }
             if phase == .evaluating {
@@ -138,28 +162,49 @@ private struct DatingDiscoverView: View {
                         rotation = 360
                     }
                 } else {
-                    appState.waitForReply(from: character, answers: answers.map(\.text))
+                    // A weak answer no longer blocks the chat; it starts with low affinity instead.
+                    appState.accept(character, affinity: AffinityRules.initial(answerTotal: answerTotal))
                     withAnimation { phase = .waiting }
                 }
             } else if phase == .success {
                 do { try await Task.sleep(for: .milliseconds(750)) } catch { return }
-                appState.accept(character)
-                session.likeCandidate(character, profile: appState.profile)
+                appState.recordMatch(character)
+                appState.accept(character, affinity: AffinityRules.initial(answerTotal: answerTotal))
+                // Coming back from the video or chat continues with the next card.
+                appState.discoverIndex = index + 1
+                if appState.discoverIndex >= deck.count { appState.discoverDeckIDs = [] }
+                session.likeCandidate(character, profile: appState.profile, score: recommendation(for: character)?.score)
             }
         }
+    }
+
+    private var answerTotal: Int { answers.reduce(0) { $0 + $1.affinity } }
+
+    private func recommendation(for character: VirtualCharacter) -> Recommendation? {
+        appState.recommendation(for: character, baseWeights: session.weights, participants: store.participants)
     }
 
     private func card(for character: VirtualCharacter) -> some View {
         ZStack {
             if phase == .front || phase == .success {
                 CharacterPortraitCard(character: character) {
-                    HStack(spacing: 6) {
-                        Image(systemName: phase == .success ? "heart.fill" : "sparkles")
-                        Text(phase == .success ? "It's mutual" : "\(CompatibilityEngine.score(character, profile: appState.profile, weights: session.weights))% in tune")
+                    let recommended = recommendation(for: character)
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 6) {
+                            Image(systemName: phase == .success ? "heart.fill" : "sparkles")
+                            Text(phase == .success ? "It's mutual" : "\(recommended?.score ?? CompatibilityEngine.score(character, profile: appState.profile, weights: session.weights))% in tune")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(phase == .success ? Color.vibePink : .black.opacity(0.35), in: Capsule())
+                        if phase == .front, let recommended {
+                            Text(recommended.reason)
+                                .font(.system(size: 10, weight: .medium))
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(.black.opacity(0.35), in: Capsule())
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
                     }
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(phase == .success ? Color.vibePink : .black.opacity(0.35), in: Capsule())
                 }
             } else {
                 cardBack(character)
@@ -209,7 +254,11 @@ private struct DatingDiscoverView: View {
                     .padding(22)
                 }
             } else {
-                WaitingResponseContent(character: character, evaluating: phase == .evaluating)
+                WaitingResponseContent(
+                    character: character,
+                    evaluating: phase == .evaluating,
+                    affinity: appState.conversation(for: character.id)?.affinity
+                )
             }
         }
     }
@@ -218,7 +267,7 @@ private struct DatingDiscoverView: View {
         VStack(spacing: 10) {
             if phase == .front {
                 HStack(spacing: 30) {
-                    Button { advance() } label: {
+                    Button { pass(character) } label: {
                         Image(systemName: "xmark").font(.system(size: 22, weight: .medium))
                             .frame(width: 56, height: 56).background(.white.opacity(0.07), in: Circle())
                     }
@@ -239,11 +288,14 @@ private struct DatingDiscoverView: View {
                 Text("Swipe to explore · tap ♥ to see if it clicks")
                     .font(.system(size: 11)).foregroundStyle(.white.opacity(0.38))
             } else if phase == .waiting {
-                Button { advance() } label: {
-                    Label("Keep exploring", systemImage: "arrow.right").font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity).padding(16).background(.white.opacity(0.08), in: Capsule())
+                Button { openLowAffinityChat(character) } label: {
+                    Label("Chat with \(character.name)", systemImage: "message.fill").font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity).padding(16)
+                        .background(LinearGradient(colors: [.vibePink, .vibePurple], startPoint: .leading, endPoint: .trailing), in: Capsule())
                 }.padding(.horizontal, 28)
-                Text("Your invitation is saved in Messages").font(.caption2).foregroundStyle(.white.opacity(0.4))
+                Button("Keep exploring") { advance() }
+                    .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.6))
+                Text("The conversation is saved in Messages").font(.caption2).foregroundStyle(.white.opacity(0.4))
             } else if phase == .questions {
                 Button("Back to their profile") { resetCard() }.font(.caption).foregroundStyle(.white.opacity(0.55)).padding(18)
             } else {
@@ -255,10 +307,12 @@ private struct DatingDiscoverView: View {
 
     private func beginQuestions(_ character: VirtualCharacter) {
         if appState.conversation(for: character.id) != nil {
-            session.likeCandidate(character, profile: appState.profile)
+            session.likeCandidate(character, profile: appState.profile, score: recommendation(for: character)?.score)
             session.step = .chat
             return
         }
+        appState.recordLike(character)
+        lastChoice = (character.name, true)
         answers = []
         questionIndex = 0
         withAnimation(.spring(response: 0.65, dampingFraction: 0.85)) { rotation = 180; phase = .questions }
@@ -280,9 +334,66 @@ private struct DatingDiscoverView: View {
         dragOffset = .zero
     }
 
+    /// Skips the video: it stays locked until affinity reaches the threshold in chat.
+    private func openLowAffinityChat(_ character: VirtualCharacter) {
+        appState.discoverIndex = index + 1
+        if appState.discoverIndex >= deck.count { appState.discoverDeckIDs = [] }
+        session.likeCandidate(character, profile: appState.profile, score: recommendation(for: character)?.score)
+        session.step = .chat
+    }
+
+    private func pass(_ character: VirtualCharacter) {
+        appState.recordPass(character)
+        lastChoice = (character.name, false)
+        advance()
+    }
+
+    /// Moves to the next card and re-ranks the cards not yet shown in this round,
+    /// so a like or pass changes what comes next. A finished round starts a fresh order.
     private func advance() {
         resetCard()
-        withAnimation(.easeInOut(duration: 0.25)) { index = characters.isEmpty ? 0 : (index + 1) % characters.count }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            let next = index + 1
+            if next >= deck.count {
+                rebuildDeck()
+            } else {
+                let shown = Array(deck.prefix(next))
+                let remainingOrder = deck.dropFirst(next).map(\.id)
+                let remaining = Set(remainingOrder)
+                let reranked = appState.discoverDeck(baseWeights: session.weights, participants: store.participants)
+                    .filter { remaining.contains($0.id) }
+                if reranked.map(\.id) != remainingOrder, let lastChoice {
+                    rerankNote = lastChoice.liked
+                        ? "More like \(lastChoice.name) coming up"
+                        : "Fewer like \(lastChoice.name) coming up"
+                }
+                deck = shown + reranked
+                index = next
+            }
+        }
+        saveDeck()
+    }
+
+    private func rebuildDeck() {
+        deck = appState.discoverDeck(baseWeights: session.weights, participants: store.participants)
+        index = 0
+        saveDeck()
+    }
+
+    /// Continues the round in progress if it still matches the current collection.
+    private func restoreDeck() {
+        let saved = appState.discoverDeckIDs.compactMap(VirtualCharacter.find)
+        guard !saved.isEmpty, Set(saved.map(\.id)) == Set(appState.characters.map(\.id)) else {
+            rebuildDeck()
+            return
+        }
+        deck = saved
+        index = min(appState.discoverIndex, saved.count - 1)
+    }
+
+    private func saveDeck() {
+        appState.discoverDeckIDs = deck.map(\.id)
+        appState.discoverIndex = index
     }
 }
 
@@ -319,6 +430,8 @@ private struct CharacterPortraitCard<Badge: View>: View {
 private struct WaitingResponseContent: View {
     let character: VirtualCharacter
     var evaluating = false
+    /// Set when a weak answer opened a low-affinity chat.
+    var affinity: Int?
     @State private var pulse = false
 
     var body: some View {
@@ -332,12 +445,16 @@ private struct WaitingResponseContent: View {
                     .font(.system(size: 18)).padding(11).background(Color.vibePink, in: Circle()).offset(x: 36, y: 36)
             }.frame(height: 185)
             VStack(spacing: 12) {
-                Text(evaluating ? "Feeling out the chemistry" : "A little space for a spark")
+                Text(evaluating ? "Feeling out the chemistry" : "Not quite a spark yet")
                     .font(.system(size: 25, weight: .semibold, design: .rounded)).multilineTextAlignment(.center)
-                Text(evaluating ? "Seeing how your worlds fit together…" : "Your invitation is with \(character.name).\nWaiting for their response.")
+                Text(evaluating ? "Seeing how your worlds fit together…" : "\(character.name) is a little unsure about you.\nWin them over in chat.")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.55)).multilineTextAlignment(.center)
                 if !evaluating {
-                    Text("Some connections take a little longer.").font(.caption).foregroundStyle(.white.opacity(0.35)).padding(.top, 4)
+                    if let affinity {
+                        AffinityMeter(affinity: affinity).frame(maxWidth: 220).padding(.top, 4)
+                    }
+                    Text("Reach \(AffinityRules.unlockThreshold) ❤ to unlock \(character.name)'s video.")
+                        .font(.caption).foregroundStyle(.white.opacity(0.35)).padding(.top, 4)
                 }
             }
             if evaluating { ProgressView().tint(.vibePink) }
@@ -350,12 +467,18 @@ private struct WaitingResponseContent: View {
 private struct LikesYouView: View {
     @Environment(DatingAppState.self) private var appState
     @Environment(DemoSession.self) private var session
-    private var recommendations: [VirtualCharacter] {
-        CompatibilityEngine.recommendations(from: appState.characters, profile: appState.profile, weights: session.weights)
-            .filter { character in
-                appState.conversation(for: character.id) == nil
-                    && !appState.snapshot.invitations.contains { $0.characterID == character.id }
+    @Environment(DataStore.self) private var store
+    private static let limit = 4
+    private var recommendations: [Recommendation] {
+        Array(appState.recommendations(baseWeights: session.weights, participants: store.participants)
+            .filter { recommendation in
+                appState.conversation(for: recommendation.id) == nil
+                    && !appState.snapshot.invitations.contains { $0.characterID == recommendation.id }
             }
+            .prefix(Self.limit))
+    }
+    private var prior: NeighborPrior? {
+        appState.neighborPrior(baseWeights: session.weights, participants: store.participants)
     }
 
     var body: some View {
@@ -368,26 +491,32 @@ private struct LikesYouView: View {
                         Text("The feeling could be mutual").font(.subheadline.weight(.semibold))
                         Text("These recommendations fit your preferences. Like one to meet them right away.")
                             .font(.caption).foregroundStyle(.white.opacity(0.5))
+                        if let prior {
+                            Text("Based on the \(prior.neighborCount) real speed daters most like you, who actually said yes most for \(prior.topAttributes.map { $0.label.lowercased() }.joined(separator: " and ")).")
+                                .font(.caption2).foregroundStyle(Color.vibeCyan.opacity(0.8))
+                        }
                     }
                 }.padding(17).datingSurface()
                 if recommendations.isEmpty {
                     ContentUnavailableView("You're all caught up", systemImage: "heart", description: Text("Explore more profiles or adjust your preferences for a different kind of connection."))
                 }
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 16) {
-                    ForEach(recommendations) { character in
+                    ForEach(recommendations) { recommendation in
+                        let character = recommendation.character
                         VStack(alignment: .leading, spacing: 10) {
                             Image(character.discoveryImageName).resizable().scaledToFill()
                                 .frame(height: 205).frame(maxWidth: .infinity).clipped()
                                 .overlay(alignment: .topLeading) {
-                                    Text("\(CompatibilityEngine.score(character, profile: appState.profile, weights: session.weights))% in tune")
+                                    Text("\(recommendation.score)% in tune")
                                         .font(.system(size: 10, weight: .semibold)).padding(8).background(.black.opacity(0.5), in: Capsule()).padding(10)
                                 }
                                 .clipShape(RoundedRectangle(cornerRadius: 20))
                             Text(character.name).font(.headline)
-                            Text(character.tags.prefix(2).joined(separator: " · ")).font(.caption2).foregroundStyle(.white.opacity(0.5))
+                            Text(recommendation.reason).font(.caption2).foregroundStyle(.white.opacity(0.5)).lineLimit(2)
                             Button {
-                                appState.accept(character)
-                                session.likeCandidate(character, profile: appState.profile)
+                                appState.recordMatch(character)
+                                appState.accept(character, affinity: AffinityRules.likesYouStart)
+                                session.likeCandidate(character, profile: appState.profile, score: recommendation.score)
                             } label: {
                                 Label("Like back", systemImage: "heart.fill").font(.caption.weight(.semibold))
                                     .frame(maxWidth: .infinity).padding(.vertical, 11)
@@ -407,6 +536,7 @@ private struct LikesYouView: View {
 private struct DatingMessagesView: View {
     @Environment(DatingAppState.self) private var appState
     @Environment(DemoSession.self) private var session
+    @Environment(DataStore.self) private var store
     @State private var search = ""
     @State private var pendingCharacter: VirtualCharacter?
 
@@ -459,7 +589,8 @@ private struct DatingMessagesView: View {
                         ForEach(conversations) { conversation in
                             if let character = VirtualCharacter.find(conversation.characterID) {
                                 Button {
-                                    session.likeCandidate(character, profile: appState.profile)
+                                    let score = appState.recommendation(for: character, baseWeights: session.weights, participants: store.participants)?.score
+                                    session.likeCandidate(character, profile: appState.profile, score: score)
                                     session.step = .chat
                                 } label: {
                                     HStack(spacing: 13) {
@@ -467,6 +598,9 @@ private struct DatingMessagesView: View {
                                         VStack(alignment: .leading, spacing: 6) {
                                             HStack {
                                                 Text(character.name).font(.subheadline.weight(.semibold))
+                                                Label("\(conversation.affinity)", systemImage: conversation.isVideoLocked ? "lock.fill" : "heart.fill")
+                                                    .font(.system(size: 10, weight: .semibold))
+                                                    .foregroundStyle(conversation.isVideoLocked ? .white.opacity(0.45) : Color.vibePink)
                                                 Spacer()
                                                 Text(conversation.updatedAt, style: .relative).font(.system(size: 10)).foregroundStyle(.white.opacity(0.35))
                                             }
@@ -597,6 +731,8 @@ private struct MomentCommentsView: View {
 
 private struct DatingProfileView: View {
     @Environment(DatingAppState.self) private var appState
+    @Environment(DemoSession.self) private var session
+    @Environment(DataStore.self) private var store
     @State private var showingEditor = false
 
     var body: some View {
@@ -631,6 +767,8 @@ private struct DatingProfileView: View {
                         .font(.subheadline).foregroundStyle(.white.opacity(0.6)).lineSpacing(6)
                 }.padding(20).frame(maxWidth: .infinity, alignment: .leading).datingSurface()
 
+                recommendationInsight
+
                 HStack {
                     Label("\(appState.snapshot.conversations.count) \(appState.snapshot.conversations.count == 1 ? "connection" : "connections")", systemImage: "heart.text.square")
                     Spacer()
@@ -639,6 +777,28 @@ private struct DatingProfileView: View {
             }.padding(20)
         }
         .sheet(isPresented: $showingEditor) { ProfileEditorView() }
+    }
+
+    /// Shows what the recommender is using, so the ranking is explainable in a demo.
+    private var recommendationInsight: some View {
+        let prior = appState.neighborPrior(baseWeights: session.weights, participants: store.participants)
+        let learned = RecommendationEngine.learnedWeights(base: session.weights, signals: appState.signals)
+        let actions = appState.signals.liked.count + appState.signals.passed.count + appState.signals.matched.count
+        return VStack(alignment: .leading, spacing: 13) {
+            HStack {
+                Text("How we pick for you").font(.headline)
+                Spacer()
+                if actions > 0 {
+                    Button("Reset") { appState.resetRecommendationLearning() }.font(.caption).foregroundStyle(Color.vibePink)
+                }
+            }
+            if let prior {
+                profileRow("Similar real daters chose", value: prior.topAttributes.map(\.label).joined(separator: " & "), icon: "person.3")
+            }
+            profileRow("Your picks lean toward", value: TypeCalculator.ranked(learned).prefix(2).map(\.label).joined(separator: " & "), icon: "chart.line.uptrend.xyaxis")
+            Text(actions == 0 ? "Like or pass in Discover and your recommendations will adapt." : "Learned from \(actions) \(actions == 1 ? "choice" : "choices") in Discover and your chats.")
+                .font(.caption2).foregroundStyle(.white.opacity(0.4))
+        }.padding(20).frame(maxWidth: .infinity, alignment: .leading).datingSurface()
     }
 
     private func profileRow(_ title: String, value: String, icon: String) -> some View {
@@ -803,5 +963,41 @@ private extension View {
     }
     func sectionEyebrow() -> some View {
         font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.4))
+    }
+}
+
+/// A compact heart meter with a tick at the unlock threshold.
+struct AffinityMeter: View {
+    let affinity: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: "heart.fill").foregroundStyle(Color.vibePink)
+                Text("\(affinity)").monospacedDigit()
+                Spacer()
+                if affinity < AffinityRules.unlockThreshold {
+                    Label("Video at \(AffinityRules.unlockThreshold)", systemImage: "lock.fill").foregroundStyle(.white.opacity(0.45))
+                } else {
+                    Label("Video unlocked", systemImage: "lock.open.fill").foregroundStyle(Color.vibeCyan)
+                }
+            }
+            .font(.system(size: 10, weight: .semibold))
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.1))
+                    Capsule()
+                        .fill(LinearGradient(colors: [.vibePink, .vibePurple], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: geometry.size.width * CGFloat(affinity) / 100)
+                    Rectangle().fill(.white.opacity(0.5))
+                        .frame(width: 1.5)
+                        .offset(x: geometry.size.width * CGFloat(AffinityRules.unlockThreshold) / 100)
+                }
+            }
+            .frame(height: 5)
+            .animation(.spring(response: 0.5), value: affinity)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Affinity \(affinity) of 100")
     }
 }

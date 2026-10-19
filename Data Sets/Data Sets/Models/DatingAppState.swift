@@ -51,7 +51,8 @@ struct DatingProfile: Codable, Equatable {
 }
 
 struct DemoChatMessage: Identifiable, Hashable, Codable {
-    enum Kind: String, Hashable, Codable { case user, companion, notice }
+    /// "video" is a companion message that carries the character's unlocked video.
+    enum Kind: String, Hashable, Codable { case user, companion, notice, video }
     var id = UUID()
     var text: String
     let kind: Kind
@@ -65,6 +66,24 @@ struct DatingConversation: Identifiable, Codable {
     var messages: [DemoChatMessage]
     var updatedAt: Date
     var unread = false
+    /// 0-100; see AffinityRules.
+    var affinity = AffinityRules.unlockThreshold
+    var videoUnlocked = true
+
+    var isVideoLocked: Bool { !videoUnlocked }
+}
+
+extension DatingConversation {
+    /// Conversations saved before affinity existed came from a full match, so they decode as unlocked.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        characterID = try container.decode(String.self, forKey: .characterID)
+        messages = try container.decode([DemoChatMessage].self, forKey: .messages)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        unread = try container.decodeIfPresent(Bool.self, forKey: .unread) ?? false
+        affinity = try container.decodeIfPresent(Int.self, forKey: .affinity) ?? AffinityRules.unlockThreshold
+        videoUnlocked = try container.decodeIfPresent(Bool.self, forKey: .videoUnlocked) ?? true
+    }
 }
 
 struct PendingInvitation: Identifiable, Codable {
@@ -93,16 +112,29 @@ struct DatingSnapshot: Codable {
 final class DatingAppState {
     private let defaults: UserDefaults
     private let storageKey = "vibemate.dating.v2"
+    /// Stored separately so older saved snapshots keep decoding.
+    private let signalsKey = "vibemate.recommendation.v1"
     var selectedTab: DatingTab = .discover
     var snapshot: DatingSnapshot { didSet { persist() } }
+    var signals: RecommendationSignals { didSet { persistSignals() } }
+    @ObservationIgnored private var priorCache: (key: String, prior: NeighborPrior?)?
+    /// Discover position, kept in memory so returning from a video or chat continues the same round.
+    @ObservationIgnored var discoverDeckIDs: [String] = []
+    @ObservationIgnored var discoverIndex = 0
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         if let data = defaults.data(forKey: storageKey),
            let saved = try? JSONDecoder().decode(DatingSnapshot.self, from: data) {
-            snapshot = saved
+            snapshot = Self.migratingInvitations(saved)
         } else {
             snapshot = DatingSnapshot()
+        }
+        if let data = defaults.data(forKey: signalsKey),
+           let saved = try? JSONDecoder().decode(RecommendationSignals.self, from: data) {
+            signals = saved
+        } else {
+            signals = RecommendationSignals()
         }
     }
 
@@ -127,14 +159,47 @@ final class DatingAppState {
         snapshot.conversations.first { $0.characterID == id }
     }
 
-    func accept(_ character: VirtualCharacter) {
+    /// Opens a conversation. Affinity at or above the threshold also unlocks the video.
+    func accept(_ character: VirtualCharacter, affinity: Int = AffinityRules.unlockThreshold) {
         snapshot.invitations.removeAll { $0.characterID == character.id }
         guard conversation(for: character.id) == nil else { return }
         snapshot.conversations.append(DatingConversation(
             characterID: character.id,
             messages: [DemoChatMessage(text: character.greeting, kind: .companion)],
-            updatedAt: Date(), unread: true
+            updatedAt: Date(), unread: true,
+            affinity: affinity,
+            videoUnlocked: affinity >= AffinityRules.unlockThreshold
         ))
+    }
+
+    /// Applies a clamped change and reports whether this change unlocked the video.
+    @discardableResult
+    func applyAffinity(_ delta: Int, for character: VirtualCharacter) -> (affinity: Int, unlockedNow: Bool)? {
+        guard let index = snapshot.conversations.firstIndex(where: { $0.characterID == character.id }) else { return nil }
+        var conversation = snapshot.conversations[index]
+        conversation.affinity = AffinityRules.apply(delta, to: conversation.affinity)
+        let unlockedNow = !conversation.videoUnlocked && conversation.affinity >= AffinityRules.unlockThreshold
+        if unlockedNow { conversation.videoUnlocked = true }
+        snapshot.conversations[index] = conversation
+        return (conversation.affinity, unlockedNow)
+    }
+
+    /// Pending invitations from older versions become low-affinity conversations.
+    private static func migratingInvitations(_ saved: DatingSnapshot) -> DatingSnapshot {
+        var snapshot = saved
+        for invitation in saved.invitations {
+            guard let character = VirtualCharacter.find(invitation.characterID),
+                  !snapshot.conversations.contains(where: { $0.characterID == invitation.characterID }) else { continue }
+            snapshot.conversations.append(DatingConversation(
+                characterID: character.id,
+                messages: [DemoChatMessage(text: character.greeting, kind: .companion)],
+                updatedAt: invitation.createdAt, unread: true,
+                affinity: AffinityRules.initial(answerTotal: 1),
+                videoUnlocked: false
+            ))
+        }
+        snapshot.invitations = []
+        return snapshot
     }
 
     func saveMessages(_ messages: [DemoChatMessage], for character: VirtualCharacter) {
@@ -142,6 +207,13 @@ final class DatingAppState {
         guard snapshot.conversations[index].messages != messages else { return }
         snapshot.conversations[index].messages = messages
         snapshot.conversations[index].updatedAt = messages.last?.date ?? Date()
+        let userMessages = messages.filter { $0.kind == .user }.count
+        if userMessages >= RecommendationEngine.engagedMessageCount, !signals.engaged.contains(character.id) {
+            var updated = signals
+            updated.engaged.append(character.id)
+            RecommendationEngine.update(&updated, toward: character, in: characters, rate: RecommendationEngine.engageRate)
+            signals = updated
+        }
     }
 
     func markRead(_ id: String) {
@@ -150,6 +222,7 @@ final class DatingAppState {
         snapshot.conversations[index].unread = false
     }
 
+    /// Legacy pending state; the current flow opens a low-affinity chat instead (see AffinityRules).
     func waitForReply(from character: VirtualCharacter, answers: [String]) {
         guard conversation(for: character.id) == nil else { return }
         snapshot.invitations.removeAll { $0.characterID == character.id }
@@ -165,6 +238,72 @@ final class DatingAppState {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         snapshot.comments[postID, default: []].append(MomentComment(author: profile.name, text: cleaned))
+    }
+
+    // MARK: Recommendations
+
+    /// Ranks the current collection for this user.
+    func recommendations(baseWeights: Weights, participants: [Participant]) -> [Recommendation] {
+        RecommendationEngine.rank(
+            characters, profile: profile, baseWeights: baseWeights, signals: signals,
+            prior: neighborPrior(baseWeights: baseWeights, participants: participants)
+        )
+    }
+
+    /// The dataset neighbor search is cached because it only changes when the
+    /// preference, interests, or onboarding weights change.
+    func neighborPrior(baseWeights: Weights, participants: [Participant]) -> NeighborPrior? {
+        let interests = profile.interests.sorted().joined(separator: ",")
+        let weightKey = Attribute.allCases.map { String(format: "%.2f", baseWeights[$0] ?? 0) }.joined(separator: ",")
+        let key = "\(profile.preference)|\(interests)|\(weightKey)|\(participants.count)"
+        if let cached = priorCache, cached.key == key { return cached.prior }
+        let prior = RecommendationEngine.neighborPrior(weights: baseWeights, profile: profile, participants: participants)
+        priorCache = (key, prior)
+        return prior
+    }
+
+    func recommendation(for character: VirtualCharacter, baseWeights: Weights, participants: [Participant]) -> Recommendation? {
+        recommendations(baseWeights: baseWeights, participants: participants).first { $0.id == character.id }
+    }
+
+    /// Discover order: best fresh matches first, passed profiles later, existing connections last.
+    func discoverDeck(baseWeights: Weights, participants: [Participant]) -> [VirtualCharacter] {
+        let connected = Set(snapshot.conversations.map(\.characterID) + snapshot.invitations.map(\.characterID))
+        return RecommendationEngine.deckOrder(
+            recommendations(baseWeights: baseWeights, participants: participants),
+            signals: signals,
+            connected: connected
+        )
+    }
+
+    func recordLike(_ character: VirtualCharacter) {
+        var updated = signals
+        if !updated.liked.contains(character.id) { updated.liked.append(character.id) }
+        updated.passed.removeAll { $0 == character.id }
+        RecommendationEngine.update(&updated, toward: character, in: characters, rate: RecommendationEngine.likeRate)
+        signals = updated
+    }
+
+    func recordPass(_ character: VirtualCharacter) {
+        var updated = signals
+        if !updated.passed.contains(character.id) { updated.passed.append(character.id) }
+        RecommendationEngine.update(&updated, toward: character, in: characters, rate: RecommendationEngine.passRate)
+        signals = updated
+    }
+
+    func recordMatch(_ character: VirtualCharacter) {
+        guard !signals.matched.contains(character.id) else { return }
+        var updated = signals
+        updated.matched.append(character.id)
+        RecommendationEngine.update(&updated, toward: character, in: characters, rate: RecommendationEngine.matchRate)
+        signals = updated
+    }
+
+    func resetRecommendationLearning() { signals = RecommendationSignals() }
+
+    private func persistSignals() {
+        guard let data = try? JSONEncoder().encode(signals) else { return }
+        defaults.set(data, forKey: signalsKey)
     }
 
     private func persist() {
