@@ -46,8 +46,13 @@ struct DatingTabShell: View {
             }
         }
         .padding(.horizontal, 6)
-        .background { Color(red: 0.055, green: 0.035, blue: 0.085).ignoresSafeArea(edges: .bottom) }
-        .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.07)).frame(height: 1) }
+        .background {
+            if appState.selectedTab == .discover {
+                Rectangle().fill(.ultraThinMaterial).overlay(.black.opacity(0.55)).ignoresSafeArea(edges: .bottom)
+            } else {
+                Color(red: 0.055, green: 0.035, blue: 0.085).ignoresSafeArea(edges: .bottom)
+            }
+        }
     }
 }
 
@@ -64,97 +69,165 @@ private struct DatingDiscoverView: View {
     @State private var questionIndex = 0
     @State private var answers: [ChemistryOption] = []
     @State private var dragOffset = CGSize.zero
-    @State private var showingPreferences = false
+    @State private var showingCharacter: VirtualCharacter?
+    @State private var profileLike: VirtualCharacter?
+    @State private var leavingNoteFor: VirtualCharacter?
+    @State private var departure: SwipeChoice?
+    @State private var history: [DiscoveryCheckpoint] = []
+    @State private var isInstantMatch = false
+    @State private var instantMatchScore: Int?
+    @State private var showReplyNotice = false
 
-    private enum CardPhase: String { case front, questions, evaluating, waiting, success }
+    private enum SwipeChoice { case pass, like, superLike }
+    private struct DiscoveryCheckpoint {
+        let deck: [VirtualCharacter]
+        let index: Int
+        let signals: RecommendationSignals
+        let superLikes: Set<String>
+    }
+    private var likeProgress: CGFloat { min(max(dragOffset.width / 115, 0), 1) }
+    private var passProgress: CGFloat { min(max(-dragOffset.width / 115, 0), 1) }
+
+    private enum CardPhase: String { case front, questions, evaluating, waiting, awaitingReply, success }
     private var characters: [VirtualCharacter] { deck.isEmpty ? appState.characters : deck }
     private var character: VirtualCharacter? {
         characters.isEmpty ? nil : characters[index % characters.count]
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("VibeMate").font(.system(size: 27, weight: .bold, design: .rounded)).tracking(-0.8)
-                    Text("A little curiosity. Real chemistry.").font(.caption).foregroundStyle(.white.opacity(0.5))
-                }
-                Spacer()
-                Button { showingPreferences = true } label: {
-                    Image(systemName: "slider.horizontal.3").font(.system(size: 19))
-                        .frame(width: 44, height: 44).background(.white.opacity(0.07), in: Circle())
-                }
-                .accessibilityLabel("Discovery preferences")
-            }
-            .padding(.horizontal, 22)
-            .padding(.top, 10)
-
-            if let character {
-                HStack {
-                    Label(appState.profile.preference == "man" ? "Meeting men" : "Meeting women", systemImage: "sparkles")
-                    Spacer()
-                    Text("\(index % characters.count + 1) / \(characters.count)").monospacedDigit()
-                }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.white.opacity(0.48))
-                .padding(.horizontal, 24)
-
-                GeometryReader { geometry in
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 30).fill(Color.vibePurple.opacity(0.1))
-                            .padding(.horizontal, 9).offset(y: 9)
-                        card(for: character)
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .rotation3DEffect(.degrees(rotation), axis: (x: 0, y: 1, z: 0), perspective: 0.65)
-                            .offset(x: dragOffset.width, y: abs(dragOffset.width) * 0.05)
-                            .rotationEffect(.degrees(Double(dragOffset.width / 30)))
-                            .gesture(DragGesture(minimumDistance: 25)
-                                .onChanged { value in
-                                    if phase == .front { dragOffset = value.translation }
-                                }
-                                .onEnded { value in
-                                    guard phase == .front else { return }
-                                    if value.translation.width > 90 { beginQuestions(character) }
-                                    else if value.translation.width < -90 { pass(character) }
-                                    withAnimation(.spring(response: 0.4)) { dragOffset = .zero }
-                                })
-                    }
-                    .overlay(alignment: .top) {
-                        if let rerankNote {
-                            Label(rerankNote, systemImage: "arrow.up.arrow.down")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 14).padding(.vertical, 9)
-                                .background(Color.vibePurple.opacity(0.9), in: Capsule())
-                                .offset(y: -14)
-                                .transition(.move(edge: .top).combined(with: .opacity))
+        GeometryReader { geometry in
+            ZStack(alignment: .bottom) {
+                if let character {
+                    Color.black.opacity(0.45)
+                    Rectangle()
+                        .fill(Color.vibePink.opacity(Double(likeProgress) * 0.65))
+                        .blur(radius: 28).accessibilityHidden(true)
+                    card(for: character)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .overlay(alignment: dragOffset.width >= 0 ? .topLeading : .topTrailing) {
+                            if phase == .front && abs(dragOffset.width) > 12 {
+                                Text(dragOffset.width > 0 ? "LIKE" : "PASS")
+                                    .font(.system(size: 30, weight: .black, design: .rounded)).tracking(3)
+                                    .foregroundStyle(dragOffset.width > 0 ? Color.vibePink : .white)
+                                    .padding(.horizontal, 16).padding(.vertical, 8)
+                                    .overlay { RoundedRectangle(cornerRadius: 10).stroke(dragOffset.width > 0 ? Color.vibePink : .white, lineWidth: 3) }
+                                    .rotationEffect(.degrees(dragOffset.width > 0 ? -13 : 13))
+                                    .padding(.top, 125).padding(.horizontal, 28)
+                                    .opacity(Double(max(likeProgress, passProgress)))
+                                    .allowsHitTesting(false)
+                            }
                         }
-                    }
-                }
-                .padding(.horizontal, 20)
+                        .rotation3DEffect(.degrees(rotation), axis: (x: 0, y: 1, z: 0), perspective: 0.65)
+                        .offset(x: dragOffset.width, y: abs(dragOffset.width) * 0.03)
+                        .rotationEffect(.degrees(Double(dragOffset.width / 38)))
+                        .gesture(DragGesture(minimumDistance: 25)
+                            .onChanged { value in
+                                if phase == .front && departure == nil { dragOffset = value.translation }
+                            }
+                            .onEnded { value in
+                                guard phase == .front && departure == nil else { return }
+                                if value.translation.width > 90 { choose(.like) }
+                                else if value.translation.width < -90 { choose(.pass) }
+                                else { withAnimation(.spring(response: 0.4)) { dragOffset = .zero } }
+                            })
+                        .simultaneousGesture(TapGesture().onEnded {
+                            if phase == .front && departure == nil { showingCharacter = character }
+                        })
+                        .accessibilityIdentifier("discover-card")
+                        .accessibilityAction(named: "View character profile") {
+                            if phase == .front { showingCharacter = character }
+                        }
 
-                controls(for: character)
-                    .padding(.top, 5)
-                    .padding(.bottom, 9)
-            } else {
-                ContentUnavailableView("More stories soon", systemImage: "sparkles", description: Text("No videos are available for this collection yet."))
+                    controls(for: character)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 22).padding(.bottom, 13)
+                        .background {
+                            LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
+                                .allowsHitTesting(false)
+                        }
+                } else {
+                    ContentUnavailableView("More stories soon", systemImage: "sparkles", description: Text("No videos are available for this collection yet."))
+                        .frame(maxHeight: .infinity)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .overlay {
+                if showReplyNotice, let character {
+                    ZStack {
+                        Color.black.opacity(0.14)
+                        AwaitingCharacterReplyView(character: character)
+                            .frame(maxWidth: 330).padding(24)
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .top) {
+                if let rerankNote {
+                    Label(rerankNote, systemImage: "sparkles")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.top, 70)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .clipped()
+        }
+        .ignoresSafeArea(.container, edges: .top)
+        .buttonStyle(.plain)
+        .sheet(item: $showingCharacter, onDismiss: {
+            if let character = profileLike {
+                profileLike = nil
+                beginQuestions(character)
+            }
+        }) { character in
+            CharacterProfileDetailView(character: character) { profileLike = character }
+        }
+        .sheet(item: $leavingNoteFor) { character in
+            CharacterNoteComposer(character: character) { text in
+                checkpoint()
+                appState.leaveIntroduction(text, for: character)
+                appState.recordLike(character)
+                advance()
+                rerankNote = "Your hello is saved in Messages"
             }
         }
-        .buttonStyle(.plain)
-        .sheet(isPresented: $showingPreferences) { ProfileEditorView() }
-        .onAppear { if deck.isEmpty { restoreDeck() } }
+        .sensoryFeedback(.selection, trigger: departure)
+        .task(id: departure) {
+            guard let choice = departure, let character else { return }
+            do { try await Task.sleep(for: .milliseconds(190)) } catch { return }
+            dragOffset = .zero
+            if choice == .pass { pass(character) }
+            else { beginQuestions(character, superLike: choice == .superLike) }
+            departure = nil
+        }
+        .onAppear {
+            if deck.isEmpty { restoreDeck() }
+            consumeRequestedLike()
+        }
+        .onChange(of: appState.requestedLikeID) { consumeRequestedLike() }
         .task(id: rerankNote) {
             guard rerankNote != nil else { return }
             do { try await Task.sleep(for: .seconds(2.5)) } catch { return }
             withAnimation { rerankNote = nil }
         }
         .onChange(of: appState.profile) {
+            history = []
             resetCard()
             rebuildDeck()
         }
-        .onChange(of: session.weights) { rebuildDeck() }
+        .onChange(of: session.weights) { history = []; rebuildDeck() }
         .task(id: phase) {
             guard let character else { return }
-            if phase == .evaluating {
+            if phase == .awaitingReply {
+                withAnimation(.easeIn(duration: 0.35)) { showReplyNotice = true }
+                do { try await Task.sleep(for: .milliseconds(1750)) } catch { return }
+                withAnimation(.easeOut(duration: 0.5)) { showReplyNotice = false }
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                lastChoice = nil
+                advance()
+            } else if phase == .evaluating {
                 do { try await Task.sleep(for: .milliseconds(1100)) } catch { return }
                 if CompatibilityEngine.chemistryMatches(answers) {
                     withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
@@ -169,11 +242,11 @@ private struct DatingDiscoverView: View {
             } else if phase == .success {
                 do { try await Task.sleep(for: .milliseconds(750)) } catch { return }
                 appState.recordMatch(character)
-                appState.accept(character, affinity: AffinityRules.initial(answerTotal: answerTotal))
+                appState.accept(character, affinity: isInstantMatch ? AffinityRules.likesYouStart : AffinityRules.initial(answerTotal: answerTotal))
                 // Coming back from the video or chat continues with the next card.
                 appState.discoverIndex = index + 1
                 if appState.discoverIndex >= deck.count { appState.discoverDeckIDs = [] }
-                session.likeCandidate(character, profile: appState.profile, score: recommendation(for: character)?.score)
+                session.likeCandidate(character, profile: appState.profile, score: instantMatchScore ?? recommendation(for: character)?.score)
             }
         }
     }
@@ -186,19 +259,22 @@ private struct DatingDiscoverView: View {
 
     private func card(for character: VirtualCharacter) -> some View {
         ZStack {
-            if phase == .front || phase == .success {
+            if phase == .front || phase == .success || phase == .awaitingReply {
                 CharacterPortraitCard(character: character) {
                     let recommended = recommendation(for: character)
                     VStack(alignment: .leading, spacing: 7) {
                         HStack(spacing: 6) {
                             Image(systemName: phase == .success ? "heart.fill" : "sparkles")
                             Text(phase == .success ? "It's mutual" : "\(recommended?.score ?? CompatibilityEngine.score(character, profile: appState.profile, weights: session.weights))% in tune")
+                            if phase == .front && appState.likeRoute(for: character, baseWeights: session.weights, participants: store.participants) == .instantMatch {
+                                Text("· Likes you").foregroundStyle(Color.vibePink)
+                            }
                         }
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(phase == .success ? Color.vibePink : .black.opacity(0.35), in: Capsule())
                         if phase == .front, let recommended {
-                            Text(recommended.reason)
+                            Text(recommended.reason).lineLimit(1)
                                 .font(.system(size: 10, weight: .medium))
                                 .padding(.horizontal, 10).padding(.vertical, 6)
                                 .background(.black.opacity(0.35), in: Capsule())
@@ -206,14 +282,16 @@ private struct DatingDiscoverView: View {
                         }
                     }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "info.circle.fill").font(.title3).foregroundStyle(.white.opacity(0.85))
+                        .padding(.trailing, 25).padding(.bottom, 138).accessibilityHidden(true)
+                }
             } else {
                 cardBack(character)
                     .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 30).stroke(.white.opacity(0.1), lineWidth: 1) }
-        .shadow(color: .black.opacity(0.22), radius: 20, y: 12)
+        .clipped()
     }
 
     private func cardBack(_ character: VirtualCharacter) -> some View {
@@ -252,6 +330,7 @@ private struct DatingDiscoverView: View {
                         }
                     }
                     .padding(22)
+                    .padding(.top, 65).padding(.bottom, 105)
                 }
             } else {
                 WaitingResponseContent(
@@ -259,34 +338,31 @@ private struct DatingDiscoverView: View {
                     evaluating: phase == .evaluating,
                     affinity: appState.conversation(for: character.id)?.affinity
                 )
+                .padding(.top, 65).padding(.bottom, 125)
             }
         }
     }
 
     private func controls(for character: VirtualCharacter) -> some View {
         VStack(spacing: 10) {
-            if phase == .front {
-                HStack(spacing: 30) {
-                    Button { pass(character) } label: {
-                        Image(systemName: "xmark").font(.system(size: 22, weight: .medium))
-                            .frame(width: 56, height: 56).background(.white.opacity(0.07), in: Circle())
-                    }
-                    .accessibilityLabel("Pass \(character.name)")
-                    Button { beginQuestions(character) } label: {
-                        Image(systemName: "heart.fill").font(.system(size: 29))
-                            .frame(width: 74, height: 74)
-                            .background(LinearGradient(colors: [.vibePink, .vibePurple], startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
-                            .shadow(color: Color.vibePink.opacity(0.25), radius: 18, y: 6)
-                    }
-                    .accessibilityLabel("Like \(character.name)")
-                    Button { appState.selectedTab = .likes } label: {
-                        Image(systemName: "sparkles").font(.system(size: 21)).foregroundStyle(Color.vibeCyan)
-                            .frame(width: 56, height: 56).background(.white.opacity(0.07), in: Circle())
-                    }
-                    .accessibilityLabel("See who likes you")
+            if phase == .front || phase == .awaitingReply {
+                HStack(spacing: 0) {
+                    discoverAction("Rewind", symbol: "arrow.uturn.backward", size: 43, color: .white.opacity(0.55)) { rewind() }
+                        .disabled(history.isEmpty && index == 0)
+                        .opacity(history.isEmpty && index == 0 ? 0.35 : 1)
+                    Spacer(minLength: 10)
+                    discoverAction("Pass \(character.name)", symbol: "xmark", size: 59, color: .white, emphasis: passProgress) { choose(.pass) }
+                    Spacer(minLength: 10)
+                    discoverAction("Super like \(character.name)", symbol: "star.fill", size: 48, color: .vibeCyan) { choose(.superLike) }
+                    Spacer(minLength: 10)
+                    discoverAction("Like \(character.name)", symbol: "heart.fill", size: 59, color: .vibePink, emphasis: likeProgress) { choose(.like) }
+                    Spacer(minLength: 10)
+                    discoverAction("Leave \(character.name) a note", symbol: "paperplane.fill", size: 43, color: .vibeCyan) { leavingNoteFor = character }
                 }
-                Text("Swipe to explore · tap ♥ to see if it clicks")
-                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.38))
+                .padding(.horizontal, 23)
+                .disabled(departure != nil || phase == .awaitingReply)
+                Text("← Pass  ·  Like →  ·  Tap the card for their story")
+                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.38))
             } else if phase == .waiting {
                 Button { openLowAffinityChat(character) } label: {
                     Label("Chat with \(character.name)", systemImage: "message.fill").font(.subheadline.weight(.semibold))
@@ -305,13 +381,76 @@ private struct DatingDiscoverView: View {
         }
     }
 
-    private func beginQuestions(_ character: VirtualCharacter) {
-        if appState.conversation(for: character.id) != nil {
-            session.likeCandidate(character, profile: appState.profile, score: recommendation(for: character)?.score)
+    private func discoverAction(_ label: String, symbol: String, size: CGFloat, color: Color, emphasis: CGFloat = 0, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: size > 50 ? 26 : 20, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: size, height: size)
+                .background(.black.opacity(0.4), in: Circle())
+                .background(color.opacity(0.07 + Double(emphasis) * 0.13), in: Circle())
+                .overlay { Circle().stroke(color.opacity(0.3 + Double(emphasis) * 0.35), lineWidth: 1) }
+                .shadow(color: color.opacity(Double(emphasis) * 0.25), radius: 15)
+                .scaleEffect(1 + emphasis * 0.16)
+        }
+        .accessibilityLabel(label)
+        .animation(.interactiveSpring(response: 0.24, dampingFraction: 0.7), value: emphasis)
+    }
+
+    private func choose(_ choice: SwipeChoice) {
+        guard phase == .front && departure == nil else { return }
+        departure = choice
+        withAnimation(.easeIn(duration: 0.19)) {
+            dragOffset = CGSize(width: choice == .pass ? -430 : 430, height: 0)
+        }
+    }
+
+    private func checkpoint() {
+        history.append(DiscoveryCheckpoint(deck: deck, index: index, signals: appState.signals, superLikes: appState.superLikedIDs))
+        if history.count > 20 { history.removeFirst() }
+    }
+
+    /// Undo preference learning as well as the card movement; never delete a conversation.
+    private func rewind() {
+        guard departure == nil else { return }
+        resetCard()
+        if let previous = history.popLast() {
+            deck = previous.deck
+            index = previous.index
+            appState.signals = previous.signals
+            appState.superLikedIDs = previous.superLikes
+        } else if index > 0 { index -= 1 }
+        rerankNote = "One more look"
+        saveDeck()
+    }
+
+    private func beginQuestions(_ character: VirtualCharacter, superLike: Bool = false) {
+        // Decide before recording a swipe: learning can reorder Likes you.
+        let route = appState.likeRoute(for: character, baseWeights: session.weights, participants: store.participants)
+        let score = recommendation(for: character)?.score
+        checkpoint()
+        if superLike { appState.recordSuperLike(character) }
+        else { appState.recordLike(character) }
+        if route == .existingChat {
+            appState.discoverIndex = index + 1
+            if appState.discoverIndex >= deck.count { appState.discoverDeckIDs = [] }
+            session.likeCandidate(character, profile: appState.profile, score: score)
             session.step = .chat
             return
         }
-        appState.recordLike(character)
+        if route == .instantMatch {
+            isInstantMatch = true
+            instantMatchScore = score
+            withAnimation(.spring(response: 0.45)) { phase = .success }
+            return
+        }
+        if route == .awaitingReply {
+            appState.awaitCharacterReply(character)
+            appState.discoverIndex = index + 1
+            if appState.discoverIndex >= deck.count { appState.discoverDeckIDs = [] }
+            phase = .awaitingReply
+            return
+        }
         lastChoice = (character.name, true)
         answers = []
         questionIndex = 0
@@ -332,6 +471,21 @@ private struct DatingDiscoverView: View {
         answers = []
         questionIndex = 0
         dragOffset = .zero
+        isInstantMatch = false
+        instantMatchScore = nil
+        showReplyNotice = false
+    }
+
+    private func consumeRequestedLike() {
+        guard let id = appState.requestedLikeID else { return }
+        appState.requestedLikeID = nil
+        guard let requested = VirtualCharacter.find(id) else { return }
+        if deck.isEmpty { restoreDeck() }
+        resetCard()
+        if let position = deck.firstIndex(where: { $0.id == id }) { index = position }
+        else { deck.insert(requested, at: 0); index = 0 }
+        saveDeck()
+        beginQuestions(requested)
     }
 
     /// Skips the video: it stays locked until affinity reaches the threshold in chat.
@@ -343,6 +497,7 @@ private struct DatingDiscoverView: View {
     }
 
     private func pass(_ character: VirtualCharacter) {
+        checkpoint()
         appState.recordPass(character)
         lastChoice = (character.name, false)
         advance()
@@ -382,7 +537,7 @@ private struct DatingDiscoverView: View {
 
     /// Continues the round in progress if it still matches the current collection.
     private func restoreDeck() {
-        let saved = appState.discoverDeckIDs.compactMap(VirtualCharacter.find)
+        let saved = appState.discoverDeckIDs.compactMap { VirtualCharacter.find($0) }
         guard !saved.isEmpty, Set(saved.map(\.id)) == Set(appState.characters.map(\.id)) else {
             rebuildDeck()
             return
@@ -405,14 +560,24 @@ private struct CharacterPortraitCard<Badge: View>: View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomLeading) {
                 Image(character.discoveryImageName).resizable().scaledToFill()
-                    .frame(width: geometry.size.width, height: geometry.size.height).clipped()
-                LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: .black.opacity(0.92), location: 1)], startPoint: .top, endPoint: .bottom)
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top).clipped()
+                Rectangle().fill(.ultraThinMaterial)
+                    .mask {
+                        LinearGradient(stops: [
+                            .init(color: .clear, location: 0.40),
+                            .init(color: .white.opacity(0.15), location: 0.58),
+                            .init(color: .white.opacity(0.8), location: 0.83),
+                            .init(color: .white, location: 1),
+                        ], startPoint: .top, endPoint: .bottom)
+                    }
+                LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: .black.opacity(0.94), location: 1)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 7) {
                         Circle().fill(Color.vibeCyan).frame(width: 6, height: 6)
                         Text("AI COMPANION").font(.system(size: 9, weight: .bold)).tracking(1.7)
                     }.foregroundStyle(.white.opacity(0.8))
                     Text(character.name).font(.system(size: 38, weight: .bold, design: .rounded)).tracking(-0.9)
+                    badge()
                     Text(character.headline).font(.subheadline).foregroundStyle(.white.opacity(0.78)).lineLimit(2)
                     HStack(spacing: 6) {
                         ForEach(character.tags.prefix(3), id: \.self) { tag in
@@ -420,9 +585,8 @@ private struct CharacterPortraitCard<Badge: View>: View {
                                 .background(.white.opacity(0.12), in: Capsule())
                         }
                     }
-                }.padding(22)
+                }.padding(.horizontal, 25).padding(.bottom, 132)
             }
-            .overlay(alignment: .topLeading) { badge().padding(18) }
         }
     }
 }
@@ -464,18 +628,42 @@ private struct WaitingResponseContent: View {
     }
 }
 
+/// Display-only: the Discover notice fades automatically; it never accepts on
+/// behalf of a character or creates a chat/video unlock.
+private struct AwaitingCharacterReplyView: View {
+    let character: VirtualCharacter
+
+    var body: some View {
+        VStack(spacing: 17) {
+            CharacterAvatar(character: character, size: 69)
+                .overlay { Circle().stroke(Color.vibePink.opacity(0.65), lineWidth: 2).padding(-5) }
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "clock.fill").font(.caption).padding(7)
+                        .background(Color.vibePurple, in: Circle())
+                }
+            Text("Waiting for \(character.name)'s reply")
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .multilineTextAlignment(.center)
+            Text("Your like is saved. Keep exploring while the spark finds its way.")
+                .font(.subheadline).foregroundStyle(.white.opacity(0.65))
+                .multilineTextAlignment(.center).lineSpacing(3)
+            Label("Saved in Messages", systemImage: "checkmark.circle")
+                .font(.caption).foregroundStyle(Color.vibeCyan)
+        }
+        .padding(28).frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28))
+        .overlay { RoundedRectangle(cornerRadius: 28).stroke(.white.opacity(0.13)) }
+        .shadow(color: .black.opacity(0.25), radius: 25, y: 12)
+        .accessibilityIdentifier("awaiting-reply-notice")
+    }
+}
+
 private struct LikesYouView: View {
     @Environment(DatingAppState.self) private var appState
     @Environment(DemoSession.self) private var session
     @Environment(DataStore.self) private var store
-    private static let limit = 4
     private var recommendations: [Recommendation] {
-        Array(appState.recommendations(baseWeights: session.weights, participants: store.participants)
-            .filter { recommendation in
-                appState.conversation(for: recommendation.id) == nil
-                    && !appState.snapshot.invitations.contains { $0.characterID == recommendation.id }
-            }
-            .prefix(Self.limit))
+        appState.likesYouRecommendations(baseWeights: session.weights, participants: store.participants)
     }
     private var prior: NeighborPrior? {
         appState.neighborPrior(baseWeights: session.weights, participants: store.participants)
@@ -514,6 +702,7 @@ private struct LikesYouView: View {
                             Text(character.name).font(.headline)
                             Text(recommendation.reason).font(.caption2).foregroundStyle(.white.opacity(0.5)).lineLimit(2)
                             Button {
+                                appState.recordLike(character)
                                 appState.recordMatch(character)
                                 appState.accept(character, affinity: AffinityRules.likesYouStart)
                                 session.likeCandidate(character, profile: appState.profile, score: recommendation.score)
@@ -618,130 +807,33 @@ private struct DatingMessagesView: View {
             }.padding(22)
         }
         .sheet(item: $pendingCharacter) { character in
-            ZStack { VibeBackground(); WaitingResponseContent(character: character) }
+            ZStack { VibeBackground(); AwaitingCharacterReplyView(character: character).padding(24) }
                 .presentationDetents([.medium]).presentationDragIndicator(.visible)
         }
     }
 }
 
-private struct CharacterMomentsView: View {
-    @Environment(DatingAppState.self) private var appState
-    @State private var showAll = false
-    @State private var commentingOn: VirtualCharacter?
-    private var characters: [VirtualCharacter] { showAll ? VirtualCharacter.allCharacters : appState.characters }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                DatingPageHeader(eyebrow: "LIFE BETWEEN HELLOS", title: "Moments", subtitle: "A glimpse into their world.")
-                HStack(spacing: 10) {
-                    feedFilter("For you", selected: !showAll) { showAll = false }
-                    feedFilter("Everyone", selected: showAll) { showAll = true }
-                    Spacer()
-                }
-                LazyVStack(spacing: 22) {
-                    ForEach(Array(characters.enumerated()), id: \.element.id) { index, character in
-                        VStack(alignment: .leading, spacing: 14) {
-                            HStack(spacing: 10) {
-                                CharacterAvatar(character: character, size: 40)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(character.name).font(.subheadline.weight(.semibold))
-                                    Text("\(index + 1)h ago · \(character.tags.first ?? "A small moment")").font(.caption2).foregroundStyle(.white.opacity(0.38))
-                                }
-                                Spacer()
-                                Text("AI").font(.system(size: 9, weight: .semibold)).foregroundStyle(.white.opacity(0.4))
-                                    .padding(6).background(.white.opacity(0.06), in: Capsule())
-                            }
-                            Text(character.momentText).font(.subheadline).lineSpacing(4).foregroundStyle(.white.opacity(0.87))
-                            Image(character.discoveryImageName).resizable().scaledToFill().frame(height: 290)
-                                .frame(maxWidth: .infinity).clipped().clipShape(RoundedRectangle(cornerRadius: 20))
-                            HStack(spacing: 23) {
-                                Button { appState.toggleLike(character.id) } label: {
-                                    Label("\(24 + index * 7 + (appState.snapshot.likedPosts.contains(character.id) ? 1 : 0))", systemImage: appState.snapshot.likedPosts.contains(character.id) ? "heart.fill" : "heart")
-                                        .foregroundStyle(appState.snapshot.likedPosts.contains(character.id) ? Color.vibePink : .white.opacity(0.5))
-                                }
-                                Button { commentingOn = character } label: {
-                                    Label("\(appState.snapshot.comments[character.id, default: []].count)", systemImage: "bubble.right")
-                                        .foregroundStyle(.white.opacity(0.5))
-                                }
-                                Spacer()
-                                Text("\(character.tags.last ?? "A thought")").font(.caption2).foregroundStyle(.white.opacity(0.3))
-                            }.font(.caption).buttonStyle(.plain)
-                        }.padding(17).datingSurface()
-                    }
-                }
-            }.padding(20)
-        }
-        .sheet(item: $commentingOn) { character in MomentCommentsView(character: character) }
-    }
-
-    private func feedFilter(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title).font(.subheadline.weight(.medium)).padding(.horizontal, 18).padding(.vertical, 10)
-                .foregroundStyle(selected ? .white : .white.opacity(0.45))
-                .background(selected ? Color.vibePink.opacity(0.2) : .white.opacity(0.04), in: Capsule())
-        }.buttonStyle(.plain)
-    }
-}
-
-private struct MomentCommentsView: View {
-    @Environment(DatingAppState.self) private var appState
-    @Environment(\.dismiss) private var dismiss
-    let character: VirtualCharacter
-    @State private var draft = ""
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                VibeBackground()
-                VStack(spacing: 0) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
-                            Text(character.momentText).font(.subheadline).foregroundStyle(.white.opacity(0.7)).padding(16).datingSurface()
-                            if appState.snapshot.comments[character.id, default: []].isEmpty {
-                                Text("Start the conversation.").font(.subheadline).foregroundStyle(.white.opacity(0.4)).padding(.top, 20)
-                            }
-                            ForEach(appState.snapshot.comments[character.id, default: []]) { comment in
-                                HStack(alignment: .top, spacing: 12) {
-                                    ProfileAvatar(profile: appState.profile, size: 34)
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(comment.author).font(.caption.weight(.semibold))
-                                        Text(comment.text).font(.subheadline).foregroundStyle(.white.opacity(0.8))
-                                    }
-                                    Spacer()
-                                }
-                            }
-                        }.padding(20)
-                    }
-                    HStack {
-                        TextField("Leave a thought…", text: $draft, axis: .vertical).lineLimit(1...3)
-                        Button {
-                            appState.comment(draft, on: character.id)
-                            draft = ""
-                        } label: { Image(systemName: "arrow.up.circle.fill").font(.title).foregroundStyle(Color.vibePink) }
-                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }.padding(18).background(.white.opacity(0.05))
-                }
-            }
-            .navigationTitle("\(character.name)'s moment").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        }.preferredColorScheme(.dark)
-    }
-}
 
 private struct DatingProfileView: View {
     @Environment(DatingAppState.self) private var appState
     @Environment(DemoSession.self) private var session
     @Environment(DataStore.self) private var store
     @State private var showingEditor = false
+    @State private var confirmingSignOut = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 DatingPageHeader(eyebrow: "YOUR SIDE OF THE STORY", title: "Profile", subtitle: "Make space for the kind of connection you want.")
                 VStack(spacing: 15) {
-                    ProfileAvatar(profile: appState.profile, size: 100)
-                        .overlay { Circle().stroke(Color.vibePink.opacity(0.5), lineWidth: 2).padding(-5) }
+                    ProfilePhotoControl(displayName: appState.profile.name, avatarData: Binding(
+                        get: { appState.profile.avatarData },
+                        set: { data in
+                            var profile = appState.profile
+                            profile.avatarData = data
+                            appState.updateProfile(profile)
+                        }
+                    ))
                     VStack(spacing: 5) {
                         Text("\(appState.profile.name), \(appState.profile.age)").font(.title2.bold())
                         Label(appState.profile.city, systemImage: "mappin.circle").font(.caption).foregroundStyle(.white.opacity(0.45))
@@ -755,7 +847,7 @@ private struct DatingProfileView: View {
 
                 VStack(alignment: .leading, spacing: 17) {
                     HStack { Text("Your preferences").font(.headline); Spacer(); Button("Edit") { showingEditor = true }.font(.caption).foregroundStyle(Color.vibePink) }
-                    profileRow("Looking to meet", value: appState.profile.preference == "man" ? "Men" : "Women", icon: "heart")
+                    profileRow("Looking to meet", value: (PreferredCompanion(rawValue: appState.profile.preference) ?? .woman).collectionTitle, icon: "heart")
                     profileRow("The energy", value: CompanionEnergy(rawValue: appState.profile.energy)?.title ?? "Calm", icon: "sparkles")
                     profileRow("Your style", value: appState.profile.communication, icon: "bubble.left")
                     profileRow("Ideal moment", value: PerfectMoment(rawValue: appState.profile.moment)?.title ?? "Late coffee", icon: "moon.stars")
@@ -769,6 +861,14 @@ private struct DatingProfileView: View {
 
                 recommendationInsight
 
+                VStack(spacing: 12) {
+                    Text(appState.sessionEmail ?? "Local demo profile").font(.caption).foregroundStyle(.white.opacity(0.4))
+                    Button("Sign out") { confirmingSignOut = true }
+                        .font(.subheadline.weight(.medium)).foregroundStyle(Color.vibePink)
+                    Text("Demo sign-in · profile and chats stay on this device.")
+                        .font(.system(size: 10)).foregroundStyle(.white.opacity(0.3))
+                }.frame(maxWidth: .infinity).padding(.vertical, 12)
+
                 HStack {
                     Label("\(appState.snapshot.conversations.count) \(appState.snapshot.conversations.count == 1 ? "connection" : "connections")", systemImage: "heart.text.square")
                     Spacer()
@@ -777,6 +877,10 @@ private struct DatingProfileView: View {
             }.padding(20)
         }
         .sheet(isPresented: $showingEditor) { ProfileEditorView() }
+        .confirmationDialog("Sign out of the local demo?", isPresented: $confirmingSignOut, titleVisibility: .visible) {
+            Button("Sign out") { appState.signOut() }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Your profile, connections and messages will stay on this device.") }
     }
 
     /// Shows what the recommender is using, so the ranking is explainable in a demo.
@@ -817,6 +921,7 @@ private struct ProfileEditorView: View {
     @Environment(DataStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var draft = DatingProfile()
+    @State private var ageText = "24"
     @State private var photo: PhotosPickerItem?
     @State private var photoError: String?
     @State private var loadingPhoto = false
@@ -841,13 +946,18 @@ private struct ProfileEditorView: View {
                 }
                 Section("About you") {
                     TextField("Name", text: $draft.name).textContentType(.nickname)
-                    Stepper("Age: \(draft.age)", value: $draft.age, in: 18...100)
+                    HStack {
+                        Text("Age")
+                        Spacer()
+                        ProfileAgeField(text: $ageText)
+                    }
                     TextField("City", text: $draft.city)
                     TextField("Your bio", text: $draft.bio, axis: .vertical).lineLimit(3...5)
                 }
                 Section("Connection preferences") {
                     Picker("I'd like to meet", selection: $draft.preference) {
                         Text("Women").tag("woman"); Text("Men").tag("man")
+                        Text("Both").tag("both")
                     }
                     Picker("Energy", selection: $draft.energy) {
                         ForEach(CompanionEnergy.allCases) { Text($0.title).tag($0.rawValue) }
@@ -884,18 +994,20 @@ private struct ProfileEditorView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        guard let age = ProfileAge.parse(ageText) else { return }
+                        draft.age = age
                         draft.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
                         draft.hasOnboarded = true
                         appState.updateProfile(draft)
                         session.applyProfile(draft, store: store)
                         dismiss()
                     }.fontWeight(.semibold)
-                    .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || loadingPhoto)
+                    .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || ProfileAge.parse(ageText) == nil || loadingPhoto)
                 }
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear { draft = appState.profile }
+        .onAppear { draft = appState.profile; ageText = String(draft.age) }
         .task(id: photo) {
             guard let photo else { return }
             loadingPhoto = true
@@ -917,16 +1029,16 @@ private struct ProfileEditorView: View {
     }
 }
 
-private struct CharacterAvatar: View {
+struct CharacterAvatar: View {
     let character: VirtualCharacter
     let size: CGFloat
     var body: some View {
-        Image(character.discoveryImageName).resizable().scaledToFill().frame(width: size, height: size).clipShape(Circle())
+        Image(character.discoveryImageName).resizable().scaledToFill().frame(width: size, height: size, alignment: .top).clipShape(Circle())
             .overlay { Circle().stroke(.white.opacity(0.12)) }
     }
 }
 
-private struct ProfileAvatar: View {
+struct ProfileAvatar: View {
     let profile: DatingProfile
     let size: CGFloat
     var body: some View {
@@ -943,7 +1055,7 @@ private struct ProfileAvatar: View {
     }
 }
 
-private struct DatingPageHeader: View {
+struct DatingPageHeader: View {
     let eyebrow: String
     let title: String
     let subtitle: String
@@ -956,7 +1068,7 @@ private struct DatingPageHeader: View {
     }
 }
 
-private extension View {
+extension View {
     func datingSurface() -> some View {
         background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay { RoundedRectangle(cornerRadius: 24).stroke(.white.opacity(0.065)) }

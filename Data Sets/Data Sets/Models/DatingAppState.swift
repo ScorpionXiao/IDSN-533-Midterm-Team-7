@@ -25,6 +25,17 @@ enum DatingTab: String, CaseIterable {
     }
 }
 
+enum ProfileAge {
+    static func parse(_ text: String) -> Int? {
+        let normalized = text.precomposedStringWithCompatibilityMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...3).contains(normalized.count),
+              normalized.utf8.allSatisfy({ (48...57).contains($0) }),
+              let age = Int(normalized), (18...100).contains(age) else { return nil }
+        return age
+    }
+}
+
 struct DatingProfile: Codable, Equatable {
     var name = "Alex"
     var age = 24
@@ -91,6 +102,25 @@ struct PendingInvitation: Identifiable, Codable {
     let characterID: String
     let createdAt: Date
     let answers: [String]
+    /// Optional for backward compatibility: old invitations migrate to chats,
+    /// while the current wait-for-reply path stays pending across relaunches.
+    var waitsForReply: Bool? = nil
+}
+
+enum DemoSignIn {
+    static func normalizedEmail(_ input: String) -> String {
+        input.precomposedStringWithCompatibilityMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func isValidEmail(_ input: String) -> Bool {
+        let value = normalizedEmail(input)
+        let parts = value.split(separator: "@", omittingEmptySubsequences: false)
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty,
+              !value.contains(where: { $0.isWhitespace }) else { return false }
+        let domain = parts[1].split(separator: ".", omittingEmptySubsequences: false)
+        return domain.count >= 2 && domain.allSatisfy { !$0.isEmpty } && (domain.last?.count ?? 0) >= 2
+    }
 }
 
 struct MomentComment: Identifiable, Codable {
@@ -107,6 +137,41 @@ struct DatingSnapshot: Codable {
     var comments: [String: [MomentComment]] = [:]
 }
 
+enum CharacterLikeRoute: Equatable { case existingChat, instantMatch, awaitingReply, chemistry }
+
+struct CharacterConnectionCohort: Codable, Equatable {
+    let incomingIDs: [String]
+    let waitingIDs: [String]
+}
+
+/// Every Like entrance uses the same incoming-interest selection and route.
+enum CharacterConnectionPolicy {
+    static func incomingLikes(from ranked: [Recommendation], excluding connected: Set<String>) -> [Recommendation] {
+        let limit = min(2, max(1, ranked.count / 5))
+        return Array(ranked.filter { !connected.contains($0.id) }.prefix(limit))
+    }
+
+    static func makeCohort(from ranked: [Recommendation], excluding connected: Set<String>) -> CharacterConnectionCohort {
+        let incoming = incomingLikes(from: ranked, excluding: connected).map(\.id)
+        let incomingSet = Set(incoming)
+        let limit = min(3, max(1, ranked.count / 4))
+        // Higher relative fit after incoming likes; bounded rank bands keep
+        // chemistry available even for a collection with similar trait scores.
+        let waiting = ranked.filter {
+            !connected.contains($0.id) && !incomingSet.contains($0.id)
+        }.prefix(limit).map(\.id)
+        return CharacterConnectionCohort(incomingIDs: incoming, waitingIDs: waiting)
+    }
+
+    static func route(characterID: String, hasConversation: Bool, incomingIDs: Set<String>,
+                      waitingIDs: Set<String> = [], hasPendingReply: Bool = false) -> CharacterLikeRoute {
+        if hasConversation { return .existingChat }
+        if hasPendingReply { return .awaitingReply }
+        if incomingIDs.contains(characterID) { return .instantMatch }
+        return waitingIDs.contains(characterID) ? .awaitingReply : .chemistry
+    }
+}
+
 @MainActor
 @Observable
 final class DatingAppState {
@@ -114,7 +179,26 @@ final class DatingAppState {
     private let storageKey = "vibemate.dating.v2"
     /// Stored separately so older saved snapshots keep decoding.
     private let signalsKey = "vibemate.recommendation.v1"
+    private let signInKey = "vibemate.demo.signin.v1"
+    private let setupKey = "vibemate.profile.setup.required.v1"
+    private let superLikesKey = "vibemate.superlikes.v1"
+    private let cohortsKey = "vibemate.connection.cohorts.v2"
+    @ObservationIgnored private var connectionCohorts: [String: CharacterConnectionCohort] = [:]
+    var superLikedIDs: Set<String> {
+        didSet { defaults.set(Array(superLikedIDs), forKey: superLikesKey) }
+    }
+    var sessionEmail: String? {
+        didSet { defaults.set(sessionEmail, forKey: signInKey) }
+    }
+    var isSignedIn: Bool { sessionEmail != nil }
+    /// Separate from saved profile data: signing in confirms, rather than erases, it.
+    var requiresProfileSetup: Bool {
+        didSet { defaults.set(requiresProfileSetup, forKey: setupKey) }
+    }
+    var needsProfileSetup: Bool { requiresProfileSetup || !profile.hasOnboarded }
     var selectedTab: DatingTab = .discover
+    /// A cross-tab Like intent, not a fabricated conversation or persisted match.
+    var requestedLikeID: String?
     var snapshot: DatingSnapshot { didSet { persist() } }
     var signals: RecommendationSignals { didSet { persistSignals() } }
     @ObservationIgnored private var priorCache: (key: String, prior: NeighborPrior?)?
@@ -124,9 +208,17 @@ final class DatingAppState {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        sessionEmail = defaults.string(forKey: signInKey)
+        // One-time confirmation for existing installs upgrading to this flow.
+        requiresProfileSetup = defaults.object(forKey: setupKey) as? Bool ?? true
+        superLikedIDs = Set(defaults.stringArray(forKey: superLikesKey) ?? [])
+        if let data = defaults.data(forKey: cohortsKey),
+           let saved = try? JSONDecoder().decode([String: CharacterConnectionCohort].self, from: data) {
+            connectionCohorts = saved
+        }
         if let data = defaults.data(forKey: storageKey),
            let saved = try? JSONDecoder().decode(DatingSnapshot.self, from: data) {
-            snapshot = Self.migratingInvitations(saved)
+            snapshot = Self.migratingMoments(Self.migratingInvitations(saved))
         } else {
             snapshot = DatingSnapshot()
         }
@@ -136,6 +228,7 @@ final class DatingAppState {
         } else {
             signals = RecommendationSignals()
         }
+        defaults.set(requiresProfileSetup, forKey: setupKey)
     }
 
     var profile: DatingProfile { snapshot.profile }
@@ -146,13 +239,40 @@ final class DatingAppState {
 
     func updateProfile(_ profile: DatingProfile) { snapshot.profile = profile }
 
+    func finishProfileSetup(_ profile: DatingProfile) {
+        var confirmed = profile
+        confirmed.hasOnboarded = true
+        updateProfile(confirmed)
+        requiresProfileSetup = false
+    }
+
+    @discardableResult
+    func signIn(email: String) -> Bool {
+        guard DemoSignIn.isValidEmail(email) else { return false }
+        requiresProfileSetup = true
+        sessionEmail = DemoSignIn.normalizedEmail(email)
+        return true
+    }
+
+    func signOut() { sessionEmail = nil }
+
+    /// A note is an invitation, not an automatic high-affinity match or video unlock.
+    func leaveIntroduction(_ text: String, for character: VirtualCharacter) {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        if conversation(for: character.id) == nil { accept(character, affinity: 30) }
+        guard var thread = conversation(for: character.id) else { return }
+        thread.messages.append(DemoChatMessage(text: cleaned, kind: .user))
+        saveMessages(thread.messages, for: character)
+        markRead(character.id)
+    }
+
     func completeOnboarding(preference: PreferredCompanion?, energy: CompanionEnergy?, moment: PerfectMoment?) {
         var updated = profile
         updated.preference = preference?.rawValue ?? updated.preference
         updated.energy = energy?.rawValue ?? updated.energy
         updated.moment = moment?.rawValue ?? updated.moment
-        updated.hasOnboarded = true
-        updateProfile(updated)
+        finishProfileSetup(updated)
     }
 
     func conversation(for id: String) -> DatingConversation? {
@@ -160,7 +280,11 @@ final class DatingAppState {
     }
 
     /// Opens a conversation. Affinity at or above the threshold also unlocks the video.
-    func accept(_ character: VirtualCharacter, affinity: Int = AffinityRules.unlockThreshold) {
+    func accept(_ character: VirtualCharacter) {
+        accept(character, affinity: AffinityRules.unlockThreshold)
+    }
+
+    func accept(_ character: VirtualCharacter, affinity: Int) {
         snapshot.invitations.removeAll { $0.characterID == character.id }
         guard conversation(for: character.id) == nil else { return }
         snapshot.conversations.append(DatingConversation(
@@ -188,6 +312,7 @@ final class DatingAppState {
     private static func migratingInvitations(_ saved: DatingSnapshot) -> DatingSnapshot {
         var snapshot = saved
         for invitation in saved.invitations {
+            guard invitation.waitsForReply != true else { continue }
             guard let character = VirtualCharacter.find(invitation.characterID),
                   !snapshot.conversations.contains(where: { $0.characterID == invitation.characterID }) else { continue }
             snapshot.conversations.append(DatingConversation(
@@ -198,7 +323,28 @@ final class DatingAppState {
                 videoUnlocked: false
             ))
         }
-        snapshot.invitations = []
+        snapshot.invitations = saved.invitations.filter { invitation in
+            invitation.waitsForReply == true && !snapshot.conversations.contains(where: { $0.characterID == invitation.characterID })
+        }
+        return snapshot
+    }
+
+    /// Move old character-keyed interactions onto the first post. Removing the
+    /// legacy key prevents an unliked post from being re-liked on every launch.
+    private static func migratingMoments(_ saved: DatingSnapshot) -> DatingSnapshot {
+        var snapshot = saved
+        for character in VirtualCharacter.allCharacters {
+            guard let first = MomentCatalog.recent(for: character.id).first else { continue }
+            if saved.likedPosts.contains(character.id) {
+                snapshot.likedPosts.insert(first.id)
+                snapshot.likedPosts.remove(character.id)
+            }
+            if let comments = saved.comments[character.id] {
+                let existing = Set(snapshot.comments[first.id, default: []].map(\.id))
+                snapshot.comments[first.id, default: []].append(contentsOf: comments.filter { !existing.contains($0.id) })
+                snapshot.comments.removeValue(forKey: character.id)
+            }
+        }
         return snapshot
     }
 
@@ -229,6 +375,14 @@ final class DatingAppState {
         snapshot.invitations.insert(PendingInvitation(characterID: character.id, createdAt: Date(), answers: answers), at: 0)
     }
 
+    func awaitCharacterReply(_ character: VirtualCharacter) {
+        guard conversation(for: character.id) == nil,
+              !snapshot.invitations.contains(where: { $0.characterID == character.id }) else { return }
+        snapshot.invitations.insert(PendingInvitation(
+            characterID: character.id, createdAt: Date(), answers: [], waitsForReply: true
+        ), at: 0)
+    }
+
     func toggleLike(_ postID: String) {
         if snapshot.likedPosts.contains(postID) { snapshot.likedPosts.remove(postID) }
         else { snapshot.likedPosts.insert(postID) }
@@ -248,6 +402,56 @@ final class DatingAppState {
             characters, profile: profile, baseWeights: baseWeights, signals: signals,
             prior: neighborPrior(baseWeights: baseWeights, participants: participants)
         )
+    }
+
+    func momentFeeds(baseWeights: Weights, participants: [Participant]) -> MomentFeedSelection {
+        let connected = snapshot.conversations.sorted { $0.updatedAt > $1.updatedAt }.map(\.characterID)
+        let pending = snapshot.invitations.sorted { $0.createdAt > $1.createdAt }.map(\.characterID)
+        return MomentFeedPolicy.select(
+            rankedIDs: recommendations(baseWeights: baseWeights, participants: participants).map(\.id),
+            connectedIDs: connected,
+            interestedIDs: pending + signals.liked,
+            passedIDs: Set(signals.passed)
+        )
+    }
+
+    func likesYouRecommendations(baseWeights: Weights, participants: [Participant]) -> [Recommendation] {
+        let ranked = recommendations(baseWeights: baseWeights, participants: participants)
+        let cohort = connectionCohort(from: ranked)
+        let connected = Set(snapshot.conversations.map(\.characterID) + snapshot.invitations.map(\.characterID))
+        let incoming = Set(cohort.incomingIDs)
+        return ranked.filter {
+            incoming.contains($0.id) && !connected.contains($0.id)
+        }
+    }
+
+    func likeRoute(for character: VirtualCharacter, baseWeights: Weights, participants: [Participant]) -> CharacterLikeRoute {
+        let cohort = connectionCohort(from: recommendations(baseWeights: baseWeights, participants: participants))
+        return CharacterConnectionPolicy.route(
+            characterID: character.id,
+            hasConversation: conversation(for: character.id) != nil,
+            incomingIDs: Set(cohort.incomingIDs), waitingIDs: Set(cohort.waitingIDs),
+            hasPendingReply: snapshot.invitations.contains { $0.characterID == character.id }
+        )
+    }
+
+    /// Seed a small cohort once per preference setup. Consumed incoming likes are
+    /// not backfilled; otherwise eventually every profile becomes an instant match.
+    func connectionCohort(from ranked: [Recommendation]) -> CharacterConnectionCohort {
+        let key = [profile.preference, profile.energy, profile.moment, profile.communication,
+                   profile.interests.sorted().joined(separator: ",")].joined(separator: "|")
+        if let saved = connectionCohorts[key] { return saved }
+        guard !ranked.isEmpty else { return CharacterConnectionCohort(incomingIDs: [], waitingIDs: []) }
+        let connected = Set(snapshot.conversations.map(\.characterID) + snapshot.invitations.map(\.characterID))
+        let cohort = CharacterConnectionPolicy.makeCohort(from: ranked, excluding: connected)
+        connectionCohorts[key] = cohort
+        if let data = try? JSONEncoder().encode(connectionCohorts) { defaults.set(data, forKey: cohortsKey) }
+        return cohort
+    }
+
+    func requestCharacterLike(_ character: VirtualCharacter) {
+        requestedLikeID = character.id
+        selectedTab = .discover
     }
 
     /// The dataset neighbor search is cached because it only changes when the
@@ -291,6 +495,16 @@ final class DatingAppState {
         signals = updated
     }
 
+    /// A stronger recommendation signal, never a shortcut around chemistry or affinity.
+    func recordSuperLike(_ character: VirtualCharacter) {
+        recordLike(character)
+        guard !superLikedIDs.contains(character.id) else { return }
+        superLikedIDs.insert(character.id)
+        var updated = signals
+        RecommendationEngine.update(&updated, toward: character, in: characters, rate: RecommendationEngine.likeRate)
+        signals = updated
+    }
+
     func recordMatch(_ character: VirtualCharacter) {
         guard !signals.matched.contains(character.id) else { return }
         var updated = signals
@@ -299,7 +513,10 @@ final class DatingAppState {
         signals = updated
     }
 
-    func resetRecommendationLearning() { signals = RecommendationSignals() }
+    func resetRecommendationLearning() {
+        signals = RecommendationSignals()
+        superLikedIDs = []
+    }
 
     private func persistSignals() {
         guard let data = try? JSONEncoder().encode(signals) else { return }
@@ -320,7 +537,7 @@ extension VirtualCharacter {
 
     static func collection(for preference: PreferredCompanion) -> [VirtualCharacter] {
         allCharacters.filter {
-            $0.companion == preference && Bundle.main.url(forResource: $0.videoName, withExtension: "mp4") != nil
+            preference.includes($0) && Bundle.main.url(forResource: $0.videoName, withExtension: "mp4") != nil
         }
     }
 

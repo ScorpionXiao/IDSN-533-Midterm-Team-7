@@ -13,6 +13,7 @@ enum DemoStep: Hashable {
 enum PreferredCompanion: String, CaseIterable, Identifiable {
     case woman
     case man
+    case both
 
     var id: String { rawValue }
 
@@ -20,6 +21,7 @@ enum PreferredCompanion: String, CaseIterable, Identifiable {
         switch self {
         case .woman: return "A woman"
         case .man: return "A man"
+        case .both: return "Both"
         }
     }
 
@@ -27,6 +29,7 @@ enum PreferredCompanion: String, CaseIterable, Identifiable {
         switch self {
         case .woman: return "Warm, thoughtful energy"
         case .man: return "Playful, magnetic energy"
+        case .both: return "Open to men and women"
         }
     }
 
@@ -34,7 +37,20 @@ enum PreferredCompanion: String, CaseIterable, Identifiable {
         switch self {
         case .woman: return "sparkles"
         case .man: return "moon.stars.fill"
+        case .both: return "heart.circle.fill"
         }
+    }
+
+    var collectionTitle: String {
+        switch self {
+        case .woman: return "Women"
+        case .man: return "Men"
+        case .both: return "Both"
+        }
+    }
+
+    func includes(_ character: VirtualCharacter) -> Bool {
+        self == .both || character.companion == self
     }
 }
 
@@ -427,6 +443,11 @@ final class DemoSession {
             weights = [
                 .attractive: 18, .sincere: 14, .intelligent: 15,
                 .funny: 20, .ambitious: 16, .sharedInterests: 17,
+            ]
+        case .both:
+            weights = [
+                .attractive: 17, .sincere: 17, .intelligent: 18,
+                .funny: 16, .ambitious: 16, .sharedInterests: 16,
             ]
         case .woman, .none:
             weights = [

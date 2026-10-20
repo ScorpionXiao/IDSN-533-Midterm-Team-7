@@ -23,7 +23,7 @@ struct NeighborPrior {
 
 struct Recommendation: Identifiable {
     let character: VirtualCharacter
-    /// Displayed "% in tune", 60 to 98.
+    /// Displayed fit index, 25 to 95; not a calibrated probability.
     let score: Int
     /// Ranking value, 0 to 100.
     let rankValue: Double
@@ -92,7 +92,7 @@ enum RecommendationEngine {
         // The dataset is heterosexual speed dating: men in it rated women and vice versa.
         let raterGender = profile.preference == "man" ? "female" : "male"
         let usable = participants.filter { $0.statedWeights != nil && $0.revealedWeights != nil }
-        let sameSide = usable.filter { $0.gender == raterGender }
+        let sameSide = profile.preference == "both" ? usable : usable.filter { $0.gender == raterGender }
         let pool = sameSide.isEmpty ? usable : sameSide
         guard !pool.isEmpty else { return nil }
 
@@ -177,7 +177,7 @@ enum RecommendationEngine {
 
             return Recommendation(
                 character: character,
-                score: min(98, max(60, Int((60 + 0.38 * value).rounded()))),
+                score: displayedFit(for: value),
                 rankValue: value,
                 datasetScore: dataset,
                 personalScore: personal,
@@ -189,6 +189,10 @@ enum RecommendationEngine {
             )
         }
         .sorted { $0.rankValue != $1.rankValue ? $0.rankValue > $1.rankValue : $0.character.id < $1.character.id }
+    }
+
+    static func displayedFit(for rankValue: Double) -> Int {
+        min(95, max(25, Int((25 + 0.75 * rankValue).rounded())))
     }
 
     /// Discover order: fresh faces first, then passed ones, then existing connections.

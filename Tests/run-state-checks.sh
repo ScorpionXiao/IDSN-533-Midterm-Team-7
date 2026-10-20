@@ -11,5 +11,7 @@ xcrun swiftc -module-cache-path "$task_checks_dir/cache" \
   "Data Sets/Data Sets/Models/DemoModels.swift" \
   "Data Sets/Data Sets/Models/DatingAppState.swift" \
   "Data Sets/Data Sets/Models/RecommendationEngine.swift" \
+  "Data Sets/Data Sets/Models/AffinityRules.swift" \
+  "Data Sets/Data Sets/Models/CharacterMoments.swift" \
   Tests/DatingStateChecks.swift -o "$task_checks_dir/checks"
 "$task_checks_dir/checks"

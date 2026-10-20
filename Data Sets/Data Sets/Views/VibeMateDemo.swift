@@ -3,50 +3,62 @@ import AVKit
 
 struct VibeMateFlowView: View {
     @Environment(DataStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var session = DemoSession()
     @State private var appState = DatingAppState()
+    private enum EntryStage: Hashable { case login, profile, experience }
+    private var entryStage: EntryStage {
+        !appState.isSignedIn ? .login : appState.needsProfileSetup ? .profile : .experience
+    }
 
     var body: some View {
         ZStack {
             VibeBackground()
 
-            switch session.step {
-            case .question:
-                OpeningQuestionView()
-            case .quickQuestions:
-                QuickSignalQuestionsView(store: store)
-            case .analyzing:
-                MatchingCalculationView(store: store)
-            case .discovery:
-                DatingTabShell()
-            case .video:
-                if let match = session.match {
-                    FullScreenMessageVideoView(character: match.character)
-                }
-            case .chat:
-                if let match = session.match {
-                    CompanionChatView(match: match)
-                        .id(match.character.id)
+            Group {
+                switch entryStage {
+                case .login: DatingLoginView()
+                case .profile: DatingProfileOnboardingView()
+                case .experience:
+                    switch session.step {
+                    case .question, .quickQuestions, .discovery:
+                        DatingTabShell()
+                    case .analyzing:
+                        MatchingCalculationView(store: store)
+                    case .video:
+                        if let match = session.match {
+                            FullScreenMessageVideoView(character: match.character)
+                        }
+                    case .chat:
+                        if let match = session.match {
+                            CompanionChatView(match: match)
+                                .id(match.character.id)
+                        }
+                    }
                 }
             }
+            .id(entryStage)
+            .transition(reduceMotion ? .opacity : .asymmetric(
+                insertion: .offset(y: 24).combined(with: .opacity),
+                removal: .opacity
+            ))
         }
         .environment(session)
         .environment(appState)
         .preferredColorScheme(.dark)
-        .animation(.smooth(duration: 0.42), value: session.step)
+        .animation(.smooth(duration: reduceMotion ? 0.15 : 0.42), value: session.step)
+        .animation(.smooth(duration: reduceMotion ? 0.15 : 0.45), value: entryStage)
         .task {
-            if appState.profile.hasOnboarded {
+            if appState.isSignedIn && !appState.needsProfileSetup {
                 session.applyProfile(appState.profile, store: store)
                 session.step = .discovery
             }
         }
-        .onChange(of: session.step) { _, step in
-            if step == .discovery && !appState.profile.hasOnboarded {
-                appState.completeOnboarding(
-                    preference: session.preferredCompanion,
-                    energy: session.selectedEnergy,
-                    moment: session.selectedMoment
-                )
+        .onChange(of: appState.isSignedIn) { _, signedIn in
+            if signedIn && !appState.needsProfileSetup {
+                appState.selectedTab = .discover
+                session.applyProfile(appState.profile, store: store)
+                session.step = .discovery
             }
         }
     }
